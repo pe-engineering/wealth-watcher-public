@@ -2,7 +2,14 @@
 
 All notable changes to this project will be documented here.
 
-The latest stable release is `v0.9.0`. Changes that have not yet been released are grouped under `Unreleased`.
+The latest stable release is `v0.10.0`. Changes that have not yet been released are grouped under `Unreleased`.
+
+## 0.10.0 - 2026-09-06
+
+- Fix release and container-image publishing after the organization transfer by aligning CI repository guards, GHCR image names, and OCI source metadata with `pe-engineering/wealth-watcher-public`.
+- Refresh the GitHub Actions, Pages and CodeQL actions, pinned Docker base-image digests, and PostgreSQL image used by Compose, while retaining signed images with SBOM and provenance metadata.
+- Update SnapTrade.Net to `6.0.14` and Vite to `8.2.2`, with the UI lockfile regenerated for the updated dependency graph.
+- Add the release upgrade guidance for the new GHCR namespace; no database migration or new application setting is included.
 
 ## 0.9.0 - 2026-09-02
 
