@@ -43,6 +43,8 @@ The UI build converts the validated current note into bundled `release.json` met
 
 ## Container images and local Docker deployment
 
+Maintainers must set newly created GHCR packages to Public for anonymous pulls. Subsequent versions retain the package's visibility.
+
 Successful pushes to `main` and version tags publish the API, web, and optional webhook-relay container images to the public GitHub Container Registry packages associated with this repository. The images contain application code only; deployment configuration, database data, Data Protection keys, and provider credentials remain local to each installation.
 
 The image tags follow this policy:
