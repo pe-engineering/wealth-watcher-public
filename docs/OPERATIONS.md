@@ -38,8 +38,6 @@ Database migrations run during API startup. Review migration changes before upgr
 
 ## Application updates
 
-If a published-image pull reports `unauthorized` or `denied`, follow [Container publishing and public pulls](CONTAINER_PUBLISHING.md) to check package visibility, namespace, tags, and saved Docker credentials on the deployment host.
-
 Review the release note shown in the application Settings page or in `docs/release-notes` before updating. Release notes identify migrations, configuration changes, image tags, and known issues.
 
 For a published-image deployment, back up PostgreSQL and the configured Data Protection key directory, update the `API_IMAGE` and `WEB_IMAGE` values in `.env` to the desired release tag or digest, and run:

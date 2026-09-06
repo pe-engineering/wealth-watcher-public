@@ -77,7 +77,7 @@ The `CONFIG_PATH` directory contains the Data Protection key ring used to decryp
 
 ### Use published container images
 
-For organization package visibility, first-publication setup, and denied-pull troubleshooting, see [Container publishing and public pulls](docs/CONTAINER_PUBLISHING.md).
+The published images are public and require no registry authentication to pull. Available tags are `main` (development), `latest` (stable release), `vMAJOR.MINOR.PATCH`, and `sha-<full-commit-sha>`.
 
 Successful pushes to `main` and version tags publish the API, web, and optional relay images to GitHub Container Registry:
 
