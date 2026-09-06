@@ -80,16 +80,16 @@ The `CONFIG_PATH` directory contains the Data Protection key ring used to decryp
 Successful pushes to `main` and version tags publish the API, web, and optional relay images to GitHub Container Registry:
 
 ```text
-ghcr.io/paevans87/wealth-watcher-public-api
-ghcr.io/paevans87/wealth-watcher-public-web
-ghcr.io/paevans87/wealth-watcher-public-webhook-relay
+ghcr.io/pe-engineering/wealth-watcher-public-api
+ghcr.io/pe-engineering/wealth-watcher-public-web
+ghcr.io/pe-engineering/wealth-watcher-public-webhook-relay
 ```
 
 The Compose file defaults to local builds. To use the published `main` images instead, set these optional values in `.env`:
 
 ```dotenv
-API_IMAGE=ghcr.io/paevans87/wealth-watcher-public-api:main
-WEB_IMAGE=ghcr.io/paevans87/wealth-watcher-public-web:main
+API_IMAGE=ghcr.io/pe-engineering/wealth-watcher-public-api:main
+WEB_IMAGE=ghcr.io/pe-engineering/wealth-watcher-public-web:main
 ```
 
 Then pull only the application images and start without rebuilding:
@@ -106,7 +106,7 @@ For a reproducible deployment, use an immutable `sha-<commit>` tag or a release 
 Webhook delivery is intentionally separate from the private application stack. Successful pushes also publish:
 
 ```text
-ghcr.io/paevans87/wealth-watcher-public-webhook-relay
+ghcr.io/pe-engineering/wealth-watcher-public-webhook-relay
 ```
 
 The relay accepts provider webhooks on a public HTTPS endpoint, stores them in a local SQLite queue, and forwards them over an outbound WebSocket connection to a configured Wealth Watcher API. The API does not need a public hostname or inbound port. Leave `WEBHOOK_RELAY_ENABLED=false` to keep webhook support disabled.
@@ -136,7 +136,7 @@ WEBHOOK_RELAY_PUBLIC_BASE_URL=https://relay.example.com
 Start the relay independently with the published image:
 
 ```powershell
-$env:RELAY_IMAGE='ghcr.io/paevans87/wealth-watcher-public-webhook-relay:main'
+$env:RELAY_IMAGE='ghcr.io/pe-engineering/wealth-watcher-public-webhook-relay:main'
 docker compose -f docker-compose.relay.yml pull
 docker compose -f docker-compose.relay.yml up -d
 ```
@@ -205,7 +205,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Vulnerabi
 
 Original project code and documentation are released under the [MIT License](LICENSE). Third-party packages, Docker images, provider APIs, provider data, names, logos, and other external material remain subject to their own terms; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
-Release and versioning rules are documented in [RELEASE_POLICY.md](RELEASE_POLICY.md). The current stable release is `v0.9.0`. The UI package remains private and is not published as an npm library.
+Release and versioning rules are documented in [RELEASE_POLICY.md](RELEASE_POLICY.md). The current stable release is `v0.10.0`. The UI package remains private and is not published as an npm library.
 
 The project owner retains sole responsibility for merge decisions, release approval, and changing the release boundary.
 

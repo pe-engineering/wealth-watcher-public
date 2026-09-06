@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export const ROOT_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const RELEASE_NOTES_DIRECTORY = path.join(ROOT_DIRECTORY, 'docs', 'release-notes');
 export const PACKAGE_FILE = path.join(ROOT_DIRECTORY, 'WealthWatcher.UI', 'package.json');
-export const DEFAULT_RELEASE_URL_BASE = 'https://github.com/paevans87/wealth-watcher-public/releases/tag';
+export const DEFAULT_RELEASE_URL_BASE = 'https://github.com/pe-engineering/wealth-watcher-public/releases/tag';
 export const REQUIRED_RELEASE_SECTIONS = Object.freeze([
     'Highlights',
     'Fixes',

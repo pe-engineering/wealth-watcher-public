@@ -9,20 +9,20 @@ import {
 } from './release-notes.mjs';
 
 test('the current release notes follow the required format', async () => {
-    const manifest = await validateRelease({ tag: 'v0.9.0' });
+    const manifest = await validateRelease({ tag: 'v0.10.0' });
 
-    assert.equal(manifest.version, '0.9.0');
-    assert.equal(manifest.tag, 'v0.9.0');
+    assert.equal(manifest.version, '0.10.0');
+    assert.equal(manifest.tag, 'v0.10.0');
     assert.equal(manifest.schemaVersion, 1);
-    assert.equal(manifest.requiresMigration, true);
+    assert.equal(manifest.requiresMigration, false);
     assert.equal(manifest.requiresConfigurationChange, true);
-    assert.match(manifest.notesMarkdown, /^# Wealth Watcher v0\.9\.0/m);
+    assert.match(manifest.notesMarkdown, /^# Wealth Watcher v0\.10\.0/m);
 });
 
 test('release validation rejects a tag that does not match the application version', async () => {
     await assert.rejects(
         () => validateRelease({ tag: 'v0.2.0' }),
-        /Git tag v0\.2\.0 does not match application version 0\.9\.0/
+        /Git tag v0\.2\.0 does not match application version 0\.10\.0/
     );
 });
 

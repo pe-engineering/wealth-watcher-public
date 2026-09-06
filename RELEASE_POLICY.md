@@ -5,7 +5,7 @@ This policy applies to the public Wealth Watcher repository and its self-managed
 ## Versioning
 
 - Use Semantic Versioning for application releases.
-- The first public release was `0.1.0`, published with the annotated Git tag `v0.1.0`; the current stable release is `0.9.0`, published with `v0.9.0`.
+- The first public release was `0.1.0`, published with the annotated Git tag `v0.1.0`; the current stable release is `0.10.0`, published with `v0.10.0`.
 - While the major version is `0`, a minor release may still contain breaking changes. Release notes must call out migrations, configuration changes, and upgrade risks.
 - Move to `1.0.0` only when the application, data migrations, deployment procedure, and support expectations are considered stable.
 - `main` is the development branch. The latest tagged release is the supported release; support is best-effort with no service-level agreement.
