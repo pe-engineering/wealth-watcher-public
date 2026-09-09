@@ -5,12 +5,16 @@ import {
     getDemoStore,
     getDemoState,
     handleDemoRequest,
-    resetDemoState
+    resetDemoState,
+    resetDemoClock,
+    setDemoClock
 } from './demoApi.js';
 
 const BUDGET_CATEGORIES = ['income', 'bills', 'savings', 'spend'];
 const CADENCE_MONTHS = { monthly: 1, quarterly: 3, annually: 12 };
-const DEMO_STORAGE_KEY = 'wealth-watcher:live-demo-ledger:v4';
+const DEMO_STORAGE_KEY = 'wealth-watcher:live-demo-ledger:v5';
+const LEGACY_DEMO_STORAGE_KEY = 'wealth-watcher:live-demo-ledger:v4';
+const DEMO_BANNER_KEY = 'wealthwatcher_demo_banner_collapsed';
 
 const monthlyAmount = item => Number(item.amount || 0) / (CADENCE_MONTHS[item.cadence] || 1);
 const budgetTotals = budget => Object.fromEntries(BUDGET_CATEGORIES.map(category => [
@@ -23,6 +27,10 @@ const readBudgetSettings = async () => JSON.parse(
 
 test.beforeEach(() => {
     resetDemoState();
+});
+
+test.afterEach(() => {
+    resetDemoClock();
 });
 
 test('representative reads return response-like, coherent demo data', async () => {
@@ -446,6 +454,7 @@ test('invalid budget input fails atomically and reset keeps unrelated localStora
     };
     try {
         values.set('wealthwatcher_pane_monthly-budget', 'open');
+        values.set(DEMO_BANNER_KEY, 'true');
         const saved = await handleDemoRequest('/api/settings', {
             method: 'POST',
             body: JSON.stringify({ wealthWatcherBudgetSettings: JSON.stringify({ income: [{ name: 'Temporary', amount: 10 }], bills: [], savings: [], spend: [] }) })
@@ -454,7 +463,9 @@ test('invalid budget input fails atomically and reset keeps unrelated localStora
         assert.ok(values.has(DEMO_STORAGE_KEY));
         resetDemoState();
         assert.equal(values.has(DEMO_STORAGE_KEY), false);
+        assert.equal(values.has(LEGACY_DEMO_STORAGE_KEY), false);
         assert.equal(values.get('wealthwatcher_pane_monthly-budget'), 'open');
+        assert.equal(values.get(DEMO_BANNER_KEY), 'true');
         assert.equal((await readBudgetSettings()).income.some(item => item.name === 'Temporary'), false);
     } finally {
         if (previousStorage === undefined) delete globalThis.localStorage;
@@ -478,12 +489,12 @@ test('seed data provides dense history across the past year and a bit', () => {
         .filter(([month]) => month !== currentMonth)
         .map(([, count]) => count);
 
-    assert.ok(state.entries.length >= 800);
-    assert.ok(dates.length >= 200);
-    assert.ok(historyAgeDays >= 450);
+    assert.ok(state.entries.length >= 650);
+    assert.ok(dates.length >= 170);
+    assert.ok(historyAgeDays >= 360);
     assert.ok(completedMonthObservationCounts.every(count => count >= 10 && count <= 20));
     for (const assetId of ['asset-isa', 'asset-pension', 'asset-home', 'asset-cash']) {
-        assert.ok(state.entries.filter(entry => entry.AssetId === assetId).length >= 200);
+        assert.ok(state.entries.filter(entry => entry.AssetId === assetId).length >= 160);
     }
 
     const isaValues = state.entries
@@ -499,6 +510,69 @@ test('seed data provides dense history across the past year and a bit', () => {
     assert.ok(changes.some(change => change > 0));
     assert.ok(changes.some(change => change < 0));
     assert.ok(directionChanges.length >= 3);
+});
+
+test('generated demo history is date-relative and stays inside the target value band', async () => {
+    setDemoClock('2026-09-09T12:00:00Z');
+    resetDemoState();
+
+    const state = getDemoState();
+    const generatedIds = new Set(state.demoMeta.generatedEntryIds);
+    const history = await (await handleDemoRequest('/api/history?period=MAX')).json();
+    const generatedEntries = state.entries.filter(entry => generatedIds.has(entry.Id));
+    const generatedDates = [...new Set(generatedEntries.map(entry => entry.Date))].sort();
+    const totals = history.Timeline.map(point => point.Value);
+
+    assert.equal(state.demoMeta.generatedAsOf, '2026-09-09');
+    assert.equal(generatedDates.at(-1), '2026-09-09');
+    assert.ok(generatedDates[0] >= '2025-09-09');
+    assert.ok(generatedDates.length >= 170);
+    assert.ok(Math.min(...totals) >= 400000);
+    assert.ok(Math.max(...totals) <= 500000);
+    assert.ok(totals.some((value, index) => index > 0 && value > totals[index - 1]));
+    assert.ok(totals.some((value, index) => index > 0 && value < totals[index - 1]));
+});
+
+test('date rollover replaces only generated rows and preserves user entries', async () => {
+    const previousStorage = globalThis.localStorage;
+    const values = new Map();
+    globalThis.localStorage = {
+        getItem: key => values.get(key) ?? null,
+        setItem: (key, value) => values.set(key, String(value)),
+        removeItem: key => values.delete(key)
+    };
+    try {
+        setDemoClock('2026-09-09T12:00:00Z');
+        resetDemoState();
+        const manual = await handleDemoRequest('/api/wealth', {
+            method: 'POST',
+            body: JSON.stringify({
+                Type: 'cash',
+                AssetId: 'asset-cash',
+                Name: 'Emergency Cash',
+                Value: 42000,
+                Date: '2026-09-01'
+            })
+        });
+        assert.equal(manual.status, 201);
+        const manualEntry = await manual.json();
+        assert.ok(values.has(DEMO_STORAGE_KEY));
+
+        setDemoClock('2026-09-10T12:00:00Z');
+        const dashboard = await (await handleDemoRequest('/api/dashboard?period=1M')).json();
+        const state = getDemoState();
+        const generatedIds = new Set(state.demoMeta.generatedEntryIds);
+
+        assert.equal(state.demoMeta.generatedAsOf, '2026-09-10');
+        assert.ok(state.entries.some(entry => entry.Id === manualEntry.Id));
+        assert.ok(state.entries.filter(entry => generatedIds.has(entry.Id)).every(entry => entry.Date <= '2026-09-10'));
+        assert.equal(dashboard.LastSyncDateTime.slice(0, 10), '2026-09-10');
+        assert.equal(JSON.parse(state.settings.wealthWatcherBudgetSettings).version, 2);
+        assert.equal(JSON.parse(values.get(DEMO_STORAGE_KEY)).demoMeta.generatedAsOf, '2026-09-10');
+    } finally {
+        if (previousStorage === undefined) delete globalThis.localStorage;
+        else globalThis.localStorage = previousStorage;
+    }
 });
 
 test('seed forecast settings provide a birth date and a reachable target date', async () => {

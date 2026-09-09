@@ -28,16 +28,25 @@
     </div>
 
     <aside id="demo-mode-banner" class="demo-mode-banner" data-demo-banner role="status" aria-live="polite">
-        <div class="demo-mode-copy">
+        <div id="demo-mode-banner-content" class="demo-mode-banner-content">
+            <div class="demo-mode-copy">
+                <span class="demo-mode-eyebrow">Public demo</span>
+                <strong id="demo-banner-heading">Fictional data, running entirely in your browser</strong>
+                <span>Explore the dashboard without an API, database, account, or provider connection.</span>
+            </div>
+            <div class="demo-mode-actions">
+                <a class="action-btn demo-main-site-link" href="https://wealthwatcher.co.uk/" data-analytics-event="outbound_link_click" data-analytics-link-id="main-site" data-analytics-placement="demo-banner" data-analytics-destination-host="wealthwatcher.co.uk">Main site</a>
+                <button id="reset-demo" class="action-btn demo-reset-btn" data-reset-demo data-analytics-event="demo_action" data-analytics-action="reset" data-analytics-route="/demo/" type="button">Reset demo</button>
+                <button id="analytics-consent-manage" class="action-btn" type="button" hidden>Analytics preferences</button>
+            </div>
+        </div>
+        <div class="demo-mode-banner-collapsed-label" aria-hidden="true">
             <span class="demo-mode-eyebrow">Public demo</span>
-            <strong>Fictional data, running entirely in your browser</strong>
-            <span>Explore the dashboard without an API, database, account, or provider connection.</span>
         </div>
-        <div class="demo-mode-actions">
-            <a class="action-btn demo-main-site-link" href="https://wealthwatcher.co.uk/" data-analytics-event="outbound_link_click" data-analytics-link-id="main-site" data-analytics-placement="demo-banner" data-analytics-destination-host="wealthwatcher.co.uk">Main site</a>
-            <button id="reset-demo" class="action-btn demo-reset-btn" data-reset-demo data-analytics-event="demo_action" data-analytics-action="reset" data-analytics-route="/demo/" type="button">Reset demo</button>
-            <button id="analytics-consent-manage" class="action-btn" type="button" hidden>Analytics preferences</button>
-        </div>
+        <button id="demo-banner-toggle" class="action-btn demo-banner-toggle" type="button" aria-expanded="true" aria-controls="demo-mode-banner-content" aria-label="Hide demo information" data-analytics-event="demo_action" data-analytics-action="banner_toggle" data-analytics-route="/demo/">
+            <span class="demo-banner-toggle-label-expanded">Hide info</span>
+            <span class="demo-banner-toggle-label-collapsed">Show info</span>
+        </button>
     </aside>
 
     <aside id="analytics-consent" class="demo-analytics-consent" hidden aria-labelledby="analytics-consent-title">

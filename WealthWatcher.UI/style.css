@@ -22,9 +22,18 @@ html:not([data-demo-mode="true"]) .demo-mode-banner { display: none; }
 
 .demo-mode-banner[hidden] { display: none; }
 
+.demo-mode-banner-content {
+    align-items: center;
+    display: flex;
+    flex: 1 1 auto;
+    gap: 1rem;
+    min-width: 0;
+}
+
 .demo-mode-copy {
     align-items: baseline;
     display: flex;
+    flex: 1 1 auto;
     flex-wrap: wrap;
     gap: 0.25rem 0.75rem;
     min-width: 0;
@@ -59,6 +68,31 @@ html:not([data-demo-mode="true"]) .demo-mode-banner { display: none; }
 .demo-reset-btn {
     flex: 0 0 auto;
     white-space: nowrap;
+}
+
+.demo-mode-banner-collapsed-label { display: none; }
+
+.demo-banner-toggle {
+    flex: 0 0 auto;
+    min-height: 2.25rem;
+    white-space: nowrap;
+}
+
+.demo-banner-toggle-label-collapsed { display: none; }
+
+.demo-mode-banner[data-collapsed="true"] .demo-mode-banner-content,
+.demo-mode-banner[data-collapsed="true"] .demo-banner-toggle-label-expanded {
+    display: none;
+}
+
+.demo-mode-banner[data-collapsed="true"] .demo-mode-banner-collapsed-label,
+.demo-mode-banner[data-collapsed="true"] .demo-banner-toggle-label-collapsed {
+    display: block;
+}
+
+.demo-banner-toggle:focus-visible {
+    outline: 2px solid var(--cyan, #22d3ee);
+    outline-offset: 2px;
 }
 
 .demo-analytics-consent {
@@ -121,6 +155,12 @@ html:not([data-demo-mode="true"]) .demo-mode-banner { display: none; }
         flex-direction: column;
     }
 
+    .demo-mode-banner-content {
+        align-items: stretch;
+        flex-direction: column;
+        width: 100%;
+    }
+
     .demo-mode-actions {
         align-items: stretch;
         flex-direction: column;
@@ -128,6 +168,15 @@ html:not([data-demo-mode="true"]) .demo-mode-banner { display: none; }
     }
 
     .demo-mode-actions .action-btn { width: 100%; }
+
+    .demo-banner-toggle { width: 100%; }
+
+    .demo-mode-banner[data-collapsed="true"] {
+        align-items: center;
+        flex-direction: row;
+    }
+
+    .demo-mode-banner[data-collapsed="true"] .demo-banner-toggle { width: auto; }
 
     .demo-analytics-consent {
         align-items: stretch;
