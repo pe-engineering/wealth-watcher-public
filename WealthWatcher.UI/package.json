@@ -1,7 +1,7 @@
 {
   "name": "WealthWatcher.UI",
   "private": true,
-  "version": "0.10.0",
+  "version": "0.11.0",
   "type": "module",
   "scripts": {
     "prepare-release": "node ../scripts/release-notes.mjs generate --output WealthWatcher.UI/public/release.json",

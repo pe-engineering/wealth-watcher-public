@@ -2,7 +2,15 @@
 
 All notable changes to this project will be documented here.
 
-The latest stable release is `v0.10.0`. Changes that have not yet been released are grouped under `Unreleased`.
+The latest stable release is `v0.11.0`. Changes that have not yet been released are grouped under `Unreleased`.
+
+## 0.11.0 - 2026-09-09
+
+- Keep the public browser demo populated with a rolling 366-day history derived from the current date, including generated rises and falls calibrated to an approximate £400k–£500k net-worth band.
+- Rebase only generated demo rows when the date changes, preserving user-added entries, settings, catalogue changes, integrations, and other browser-local demo state across refreshes.
+- Refresh cached and active demo views when the date rolls over or the page regains focus or visibility, so dashboard, history, calendar, forecast, FIRE, and budget surfaces continue to show current fictional data.
+- Add an accessible collapsible public-demo banner that is expanded by default and stores its preference independently from the Reset demo action.
+- Add regression coverage for date-relative fixture generation, manual-entry preservation, value bounds, banner persistence, and responsive layout contracts.
 
 ## 0.10.0 - 2026-09-06
 
