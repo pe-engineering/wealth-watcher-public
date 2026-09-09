@@ -50,6 +50,9 @@ test('public demo banner is fixed above the page and preserves its layout space'
     assert.match(indexMarkup, /<html\s+lang="en"\s+data-demo-mode="false">/);
     assert.match(indexMarkup, /<aside id="demo-mode-banner" class="demo-mode-banner" data-demo-banner\s+role="status"/);
     assert.match(indexMarkup, /class="action-btn demo-main-site-link"\s+href="https:\/\/wealthwatcher\.co\.uk\/"/);
+    assert.match(indexMarkup, /id="demo-mode-banner-content"/);
+    assert.match(indexMarkup, /id="demo-banner-toggle"[^>]+aria-expanded="true"[^>]+aria-controls="demo-mode-banner-content"/);
+    assert.match(stylesheet, /\.demo-mode-banner\[data-collapsed="true"\]/);
 });
 
 test('feature-gated Milestones card stays under its renderer visibility contract', () => {

@@ -22,6 +22,7 @@ import { requestNotification } from './components/ConfirmationModal.js';
 import { showToast } from './components/Toast.js';
 import { createAuditLogController } from './components/AuditLog.js';
 import { parseJsonObject } from './utils/persistedSettings.js';
+import { getDemoBannerCollapsed, setDemoBannerCollapsed } from './utils/demoBannerPreference.js';
 import {
     getAssetTypeaheadState,
     renderAssetTypeahead,
@@ -83,6 +84,68 @@ function syncDemoChromeOffsets(banner, topNav, demoMode) {
     root.style.setProperty('--demo-app-bar-height', `${topNavHeight}px`);
 }
 
+function applyDemoBannerState(banner, collapsed) {
+    if (!banner) return;
+    const toggle = banner.querySelector?.('#demo-banner-toggle');
+    const content = banner.querySelector?.('#demo-mode-banner-content');
+    const collapsedLabel = banner.querySelector?.('.demo-mode-banner-collapsed-label');
+    banner.dataset.collapsed = String(collapsed);
+    if (content) {
+        content.hidden = collapsed;
+        content.setAttribute('aria-hidden', String(collapsed));
+    }
+    if (collapsedLabel) collapsedLabel.setAttribute('aria-hidden', String(!collapsed));
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', String(!collapsed));
+        const label = collapsed ? 'Show demo information' : 'Hide demo information';
+        toggle.setAttribute('aria-label', label);
+    }
+}
+
+let demoFreshnessTimer = null;
+let demoFreshnessEventsAttached = false;
+let demoFreshnessCheckRunning = false;
+
+function scheduleDemoFreshnessCheck() {
+    if (!isDemoModeEnabled()) return;
+    if (demoFreshnessTimer) clearTimeout(demoFreshnessTimer);
+    demoFreshnessTimer = setTimeout(() => {
+        demoFreshnessTimer = null;
+        void refreshDemoUiIfNeeded();
+    }, 60 * 1000);
+}
+
+async function refreshDemoUiIfNeeded() {
+    if (!isDemoModeEnabled() || typeof apiClient.ensureDemoFresh !== 'function' || demoFreshnessCheckRunning) return false;
+    demoFreshnessCheckRunning = true;
+    try {
+        const changed = await apiClient.ensureDemoFresh();
+        if (!changed) return false;
+
+        const route = (window.location?.hash || '#dashboard').split('?')[0];
+        if (route === '#dashboard' || route === '#fire') await loadDashboard({ force: true });
+        if (route !== '#dashboard') handleRouting();
+        return true;
+    } finally {
+        demoFreshnessCheckRunning = false;
+        scheduleDemoFreshnessCheck();
+    }
+}
+
+function setupDemoFreshnessLifecycle() {
+    if (!isDemoModeEnabled()) return;
+    if (!demoFreshnessEventsAttached) {
+        const refresh = () => {
+            if (document.hidden) return;
+            void refreshDemoUiIfNeeded();
+        };
+        if (typeof window.addEventListener === 'function') window.addEventListener('focus', refresh);
+        if (typeof document.addEventListener === 'function') document.addEventListener('visibilitychange', refresh);
+        demoFreshnessEventsAttached = true;
+    }
+    scheduleDemoFreshnessCheck();
+}
+
 function setupDemoModeUi(demoMode) {
     document.documentElement.dataset.demoMode = String(demoMode);
     document.body?.classList.toggle('demo-mode', demoMode);
@@ -94,6 +157,21 @@ function setupDemoModeUi(demoMode) {
         banner.dataset.demoMode = String(demoMode);
         banner.classList.toggle('is-visible', demoMode);
         banner.setAttribute('aria-hidden', String(!demoMode));
+
+        if (demoMode) {
+            applyDemoBannerState(banner, getDemoBannerCollapsed());
+            const toggle = banner.querySelector?.('#demo-banner-toggle');
+            if (toggle && toggle.dataset.demoBannerToggleReady !== 'true') {
+                toggle.addEventListener('click', event => {
+                    event.preventDefault();
+                    const collapsed = toggle.getAttribute('aria-expanded') === 'true';
+                    setDemoBannerCollapsed(collapsed);
+                    applyDemoBannerState(banner, collapsed);
+                    syncDemoChromeOffsets(banner, topNav, demoMode);
+                });
+                toggle.dataset.demoBannerToggleReady = 'true';
+            }
+        }
     }
     syncDemoChromeOffsets(banner, topNav, demoMode);
 
@@ -136,6 +214,7 @@ function setupDemoModeUi(demoMode) {
             void resetDemo();
         });
     });
+    setupDemoFreshnessLifecycle();
 }
 
 // --- BOOT ANIMATION ---

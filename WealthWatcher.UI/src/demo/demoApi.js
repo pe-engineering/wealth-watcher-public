@@ -68,7 +68,13 @@ const CATEGORY_SEEDS = [
     { Id: 'cash', Label: 'Cash', Color: '#34d399', DisplayOrder: 4, ClassificationValueId: 'kind-cash', AssetGroupId: 'group-cash', AssetGroupCode: 'cash' }
 ];
 
-const DEMO_STORAGE_KEY = 'wealth-watcher:live-demo-ledger:v4';
+const DEMO_STORAGE_KEY = 'wealth-watcher:live-demo-ledger:v5';
+const LEGACY_DEMO_STORAGE_KEY = 'wealth-watcher:live-demo-ledger:v4';
+const DEMO_HISTORY_DAYS = 366;
+const DEMO_VALUE_BOUNDS = Object.freeze({ min: 400000, max: 500000, center: 450000 });
+const GENERATED_ENTRY_ID_PREFIX = 'demo-seed-entry-';
+
+let demoClock = () => new Date();
 
 const clone = value => {
     if (value === undefined) return undefined;
@@ -77,8 +83,33 @@ const clone = value => {
         : JSON.parse(JSON.stringify(value));
 };
 
+function getDemoNow() {
+    const candidate = typeof demoClock === 'function' ? demoClock() : demoClock;
+    const parsed = candidate instanceof Date ? new Date(candidate.getTime()) : new Date(candidate);
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+export function setDemoClock(value) {
+    if (typeof value === 'function') {
+        demoClock = value;
+        return todayKey();
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) throw new TypeError('The demo clock must resolve to a valid date.');
+    demoClock = () => new Date(parsed.getTime());
+    return todayKey();
+}
+
+export function resetDemoClock() {
+    demoClock = () => new Date();
+}
+
+export function getDemoDateKey() {
+    return todayKey();
+}
+
 const dateKey = date => new Date(date).toISOString().slice(0, 10);
-const todayKey = () => dateKey(new Date());
+const todayKey = (now = getDemoNow()) => dateKey(now);
 const addDays = (date, days) => new Date(new Date(`${date}T12:00:00Z`).getTime() + days * DAY_MS);
 const idFrom = (prefix, number) => `${prefix}-${number}`;
 const numberValue = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -173,7 +204,7 @@ function entryTimestamp(entry) {
     return Number.isNaN(timestamp.getTime()) ? null : timestamp;
 }
 
-function isEntryVisibleAt(entry, now = new Date()) {
+function isEntryVisibleAt(entry, now = getDemoNow()) {
     const timestamp = entryTimestamp(entry);
     return timestamp !== null && timestamp <= now;
 }
@@ -604,8 +635,8 @@ function safeSettingsSnapshot() {
     return settings;
 }
 
-function seedState({ budgetSettings = createDefaultBudgetSettings() } = {}) {
-    const today = todayKey();
+function seedState({ budgetSettings = createDefaultBudgetSettings(), asOfDate = getDemoNow() } = {}) {
+    const today = todayKey(asOfDate);
     const groups = [
         {
             Id: 'group-investments', Key: 'asset-group', DisplayName: 'Asset Groups',
@@ -631,7 +662,7 @@ function seedState({ budgetSettings = createDefaultBudgetSettings() } = {}) {
         { Id: 'asset-home', DisplayName: 'Primary Home', Name: 'Primary Home', AssetKindId: 'kind-property', AssetGroupId: 'group-property', EntryKind: 'Property', Archived: false },
         { Id: 'asset-cash', DisplayName: 'Emergency Cash', Name: 'Emergency Cash', AssetKindId: 'kind-cash', AssetGroupId: 'group-cash', EntryKind: 'Cash', Archived: false }
     ];
-    const historyDays = 16 * 30;
+    const historyDays = DEMO_HISTORY_DAYS - 1;
     const gaussianPulse = (ageDays, center, width) => Math.exp(-((ageDays - center) ** 2) / (2 * width ** 2));
     const hashNoise = (seed, phase) => {
         const raw = Math.sin(((seed + 1) * 12.9898) + (phase * 78.233)) * 43758.5453;
@@ -703,23 +734,35 @@ function seedState({ budgetSettings = createDefaultBudgetSettings() } = {}) {
         }
     ];
     const todayDate = new Date(`${today}T12:00:00Z`);
+    const historyStartDate = new Date(todayDate.getTime() - (DEMO_HISTORY_DAYS - 1) * DAY_MS);
+    const historyStart = dateKey(historyStartDate);
     const observations = [];
     // Completed months get 14 snapshots spread across their days. The current
     // month is sampled through today so the calendar never contains future data.
-    for (let monthOffset = 15; monthOffset >= 0; monthOffset -= 1) {
-        const monthStart = new Date(Date.UTC(
-            todayDate.getUTCFullYear(),
-            todayDate.getUTCMonth() - monthOffset,
-            1,
-            12
-        ));
+    // The first and last dates are always included so the rolling window remains
+    // date-relative even when the month starts or ends between sample points.
+    let monthStart = new Date(Date.UTC(
+        historyStartDate.getUTCFullYear(),
+        historyStartDate.getUTCMonth(),
+        1,
+        12
+    ));
+    const currentMonthStart = new Date(Date.UTC(
+        todayDate.getUTCFullYear(),
+        todayDate.getUTCMonth(),
+        1,
+        12
+    ));
+    while (monthStart <= currentMonthStart) {
         const lastDay = new Date(Date.UTC(
             monthStart.getUTCFullYear(),
             monthStart.getUTCMonth() + 1,
             0,
             12
         )).getUTCDate();
-        const maximumDay = monthOffset === 0 ? todayDate.getUTCDate() : lastDay;
+        const isCurrentMonth = monthStart.getUTCFullYear() === todayDate.getUTCFullYear()
+            && monthStart.getUTCMonth() === todayDate.getUTCMonth();
+        const maximumDay = isCurrentMonth ? todayDate.getUTCDate() : lastDay;
         const observationCount = Math.min(14, maximumDay);
         const days = [...new Set(Array.from({ length: observationCount }, (_, index) => (
             observationCount === 1
@@ -734,16 +777,29 @@ function seedState({ budgetSettings = createDefaultBudgetSettings() } = {}) {
                 day,
                 12
             ));
-            observations.push({
-                ageDays: Math.round((todayDate - observationDate) / DAY_MS),
-                date: dateKey(observationDate)
-            });
+            const observationKey = dateKey(observationDate);
+            if (observationKey >= historyStart && observationKey <= today) {
+                observations.push({
+                    ageDays: Math.round((todayDate - observationDate) / DAY_MS),
+                    date: observationKey
+                });
+            }
         }
+        monthStart = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1, 12));
     }
+
+    const ensureObservation = (date, ageDays) => {
+        if (!observations.some(observation => observation.date === date)) observations.push({ date, ageDays });
+    };
+    ensureObservation(historyStart, DEMO_HISTORY_DAYS - 1);
+    ensureObservation(today, 0);
+    observations.sort((left, right) => left.date.localeCompare(right.date));
+
     let entryNumber = 1;
+    const generatedEntryIds = [];
     const entries = historyConfigs.flatMap(config => observations.map(observation => {
         const entry = {
-            Id: idFrom('entry', entryNumber++),
+            Id: `${GENERATED_ENTRY_ID_PREFIX}${entryNumber++}`,
             Type: config.type,
             Name: config.name,
             AssetId: config.assetId,
@@ -770,6 +826,48 @@ function seedState({ budgetSettings = createDefaultBudgetSettings() } = {}) {
         }
         return entry;
     }));
+
+    // Normalize only the generated baseline to a readable net-worth band. The
+    // per-date multiplier preserves the curve's direction changes and category
+    // proportions while keeping property equity valid. User entries are added
+    // later as an overlay and are deliberately never clamped.
+    const rawTotals = new Map(observations.map(observation => {
+        const total = entries
+            .filter(entry => entry.Date === observation.date)
+            .reduce((sum, entry) => sum + (entry.Type === 'property'
+                ? numberValue(entry.Value) - numberValue(entry.Mortgage)
+                : numberValue(entry.Value)), 0);
+        return [observation.date, total];
+    }));
+    const rawValues = [...rawTotals.values()].filter(value => Number.isFinite(value));
+    const rawMinimum = Math.min(...rawValues);
+    const rawMaximum = Math.max(...rawValues);
+    const rawCenter = (rawMinimum + rawMaximum) / 2;
+    const rawRange = Math.max(rawMaximum - rawMinimum, 1);
+    const targetHalfRange = (DEMO_VALUE_BOUNDS.max - DEMO_VALUE_BOUNDS.min) * 0.44;
+    const scaleByDate = new Map([...rawTotals.entries()].map(([date, rawTotal]) => {
+        const target = Math.min(
+            DEMO_VALUE_BOUNDS.max - 1000,
+            Math.max(
+                DEMO_VALUE_BOUNDS.min + 1000,
+                DEMO_VALUE_BOUNDS.center + ((rawTotal - rawCenter) / rawRange) * targetHalfRange
+            )
+        );
+        return [date, rawTotal > 0 ? target / rawTotal : 1];
+    }));
+
+    entries.forEach(entry => {
+        const scale = scaleByDate.get(entry.Date) || 1;
+        entry.Value = Math.max(0, Math.round(numberValue(entry.Value) * scale));
+        if (entry.InvestedCapital !== undefined) {
+            entry.InvestedCapital = Math.max(0, Math.round(numberValue(entry.InvestedCapital) * scale));
+        }
+        if (entry.Mortgage !== undefined) {
+            entry.Mortgage = Math.min(entry.Value, Math.max(0, Math.round(numberValue(entry.Mortgage) * scale)));
+        }
+        generatedEntryIds.push(entry.Id);
+    });
+
     return {
         settings: {
             wealthWatcherGeneralSettings: json({ showZeroValuesOnDashboard: false, showZeroValuesOnHistory: false, showSparklines: true }),
@@ -783,7 +881,7 @@ function seedState({ budgetSettings = createDefaultBudgetSettings() } = {}) {
         categories: clone(CATEGORY_SEEDS),
         assets,
         entries,
-        audits: [{ Id: 'audit-1', StartTime: new Date().toISOString(), ProviderName: 'Demo data', Status: 'Completed', StatusClass: 'success', RecordsAdded: entries.length, LogMessage: 'Demo portfolio loaded.' }],
+        audits: [{ Id: 'audit-1', StartTime: getDemoNow().toISOString(), ProviderName: 'Demo data', Status: 'Completed', StatusClass: 'success', RecordsAdded: entries.length, LogMessage: 'Demo portfolio loaded.' }],
         integrations: [],
         integrationCatalog: [
             { Key: 'snaptrade', DisplayName: 'SnapTrade', Description: 'Connect investment accounts', SupportsWebhooks: true, MinimumPollingIntervalMinutes: 60 },
@@ -803,7 +901,14 @@ function seedState({ budgetSettings = createDefaultBudgetSettings() } = {}) {
             LastTestId: null,
             LastError: null
         },
-        nextIds: { asset: 5, entry: entries.length + 1, value: 1, property: 2, connection: 1, account: 1, audit: 2 }
+        demoMeta: {
+            schemaVersion: 5,
+            generatedAsOf: today,
+            generatedEntryIds,
+            generatedEntryPrefix: GENERATED_ENTRY_ID_PREFIX,
+            seedAuditId: 'audit-1'
+        },
+        nextIds: { asset: 5, entry: 1, value: 1, property: 2, connection: 1, account: 1, audit: 2 }
     };
 }
 
@@ -815,27 +920,161 @@ function demoStorage() {
     }
 }
 
+function mergeCollection(base, overlay, key = 'Id') {
+    const merged = Array.isArray(base) ? clone(base) : [];
+    if (!Array.isArray(overlay)) return merged;
+
+    const indexes = new Map(merged
+        .map((item, index) => [String(item?.[key] ?? ''), index])
+        .filter(([id]) => id));
+    overlay.forEach(item => {
+        if (!isRecord(item)) return;
+        const id = String(item[key] ?? '');
+        if (!id) return;
+        if (indexes.has(id)) {
+            merged[indexes.get(id)] = { ...merged[indexes.get(id)], ...clone(item) };
+            return;
+        }
+        indexes.set(id, merged.length);
+        merged.push(clone(item));
+    });
+    return merged;
+}
+
+function storedGeneratedEntryIds(stored) {
+    const declared = stored?.demoMeta?.generatedEntryIds;
+    if (Array.isArray(declared) && declared.length) return new Set(declared.map(String));
+    return new Set((Array.isArray(stored?.entries) ? stored.entries : [])
+        .filter(entry => entry?.Source === 'Demo' || String(entry?.Id || '').startsWith(GENERATED_ENTRY_ID_PREFIX))
+        .map(entry => String(entry.Id)));
+}
+
+function storedOverlayEntries(stored) {
+    const generatedIds = storedGeneratedEntryIds(stored);
+    return (Array.isArray(stored?.entries) ? stored.entries : [])
+        .filter(entry => isRecord(entry) && !generatedIds.has(String(entry.Id)))
+        .map(clone);
+}
+
+function storedOverlayAudits(stored) {
+    const seedAuditId = stored?.demoMeta?.seedAuditId || 'audit-1';
+    return (Array.isArray(stored?.audits) ? stored.audits : [])
+        .filter(audit => isRecord(audit) && String(audit.Id) !== String(seedAuditId))
+        .map(clone);
+}
+
+function nextNumericId(items, kind, fallback) {
+    const pattern = new RegExp(`^${kind}-(\\d+)$`);
+    const highest = (Array.isArray(items) ? items : []).reduce((max, item) => {
+        const match = String(item?.Id || '').match(pattern);
+        return match ? Math.max(max, Number(match[1])) : max;
+    }, fallback - 1);
+    return highest + 1;
+}
+
+function recomputeNextIds(state) {
+    const minimums = { asset: 5, entry: 1, value: 1, property: 2, connection: 1, account: 1, audit: 2 };
+    const collections = {
+        asset: state.assets,
+        entry: state.entries,
+        value: state.groups?.flatMap(group => group.Values || []),
+        property: state.assets,
+        connection: state.integrations,
+        account: state.integrations?.flatMap(integration => integration.Accounts || []),
+        audit: state.audits
+    };
+    state.nextIds = Object.fromEntries(Object.entries(minimums).map(([kind, fallback]) => [
+        kind,
+        Math.max(Number(state.nextIds?.[kind]) || 0, nextNumericId(collections[kind], kind, fallback))
+    ]));
+    return state;
+}
+
+function finalizeLoadedState(state, seeded) {
+    state.settings = { ...seeded.settings, ...(isRecord(state.settings) ? state.settings : {}) };
+    const budget = normalizePersistedSetting(
+        'wealthWatcherBudgetSettings',
+        state.settings.wealthWatcherBudgetSettings,
+        state.assets
+    );
+    state.settings.wealthWatcherBudgetSettings = budget.value || seeded.settings.wealthWatcherBudgetSettings;
+    state.demoMeta = state.demoMeta || clone(seeded.demoMeta);
+    return recomputeNextIds(state);
+}
+
+function hydrateStoredState(stored, seeded) {
+    const hydrated = {
+        ...seeded,
+        ...clone(stored),
+        settings: { ...seeded.settings, ...(isRecord(stored?.settings) ? clone(stored.settings) : {}) },
+        groups: Array.isArray(stored?.groups) ? clone(stored.groups) : seeded.groups,
+        categories: Array.isArray(stored?.categories) && stored.categories.length
+            ? clone(stored.categories)
+            : seeded.categories,
+        assets: Array.isArray(stored?.assets) ? clone(stored.assets) : seeded.assets,
+        entries: Array.isArray(stored?.entries) ? clone(stored.entries) : seeded.entries,
+        audits: Array.isArray(stored?.audits) ? clone(stored.audits) : seeded.audits,
+        integrations: Array.isArray(stored?.integrations) ? clone(stored.integrations) : [],
+        integrationCatalog: Array.isArray(stored?.integrationCatalog)
+            ? clone(stored.integrationCatalog)
+            : seeded.integrationCatalog,
+        marketHours: isRecord(stored?.marketHours) ? clone(stored.marketHours) : seeded.marketHours,
+        webhookRelay: { ...seeded.webhookRelay, ...(isRecord(stored?.webhookRelay) ? clone(stored.webhookRelay) : {}) },
+        demoMeta: isRecord(stored?.demoMeta) ? clone(stored.demoMeta) : clone(seeded.demoMeta)
+    };
+    return finalizeLoadedState(hydrated, seeded);
+}
+
+function rebaseStoredState(stored, asOfDate = getDemoNow()) {
+    const seeded = seedState({ asOfDate });
+    const rebased = {
+        ...seeded,
+        settings: { ...seeded.settings, ...(isRecord(stored?.settings) ? clone(stored.settings) : {}) },
+        groups: mergeCollection(seeded.groups, stored?.groups),
+        categories: Array.isArray(stored?.categories) && stored.categories.length
+            ? clone(stored.categories)
+            : seeded.categories,
+        assets: mergeCollection(seeded.assets, stored?.assets),
+        entries: [...seeded.entries, ...storedOverlayEntries(stored)],
+        audits: [...storedOverlayAudits(stored), ...seeded.audits],
+        integrations: Array.isArray(stored?.integrations) ? clone(stored.integrations) : [],
+        integrationCatalog: mergeCollection(seeded.integrationCatalog, stored?.integrationCatalog, 'Key'),
+        marketHours: isRecord(stored?.marketHours) ? clone(stored.marketHours) : seeded.marketHours,
+        webhookRelay: { ...seeded.webhookRelay, ...(isRecord(stored?.webhookRelay) ? clone(stored.webhookRelay) : {}) }
+    };
+    return finalizeLoadedState(rebased, seeded);
+}
+
+function writeStateToStorage(storage, state) {
+    try {
+        storage?.setItem(DEMO_STORAGE_KEY, JSON.stringify(state));
+    } catch {
+        // Browser storage is an enhancement; the in-memory demo remains usable.
+    }
+}
+
 function loadStoredState() {
     const storage = demoStorage();
     if (!storage) return seedState();
     try {
-        const raw = storage.getItem(DEMO_STORAGE_KEY);
+        const currentRaw = storage.getItem(DEMO_STORAGE_KEY);
+        const legacyRaw = storage.getItem(LEGACY_DEMO_STORAGE_KEY);
+        const raw = currentRaw || legacyRaw;
         if (!raw) return seedState();
-        const seeded = seedState();
+
         const stored = JSON.parse(raw);
-        const merged = {
-            ...seeded,
-            ...(isRecord(stored) ? stored : {}),
-            settings: { ...seeded.settings, ...(isRecord(stored?.settings) ? stored.settings : {}) },
-            webhookRelay: { ...seeded.webhookRelay, ...(isRecord(stored?.webhookRelay) ? stored.webhookRelay : {}) }
-        };
-        const budget = normalizePersistedSetting(
-            'wealthWatcherBudgetSettings',
-            merged.settings.wealthWatcherBudgetSettings,
-            merged.assets
-        );
-        merged.settings.wealthWatcherBudgetSettings = budget.value || seeded.settings.wealthWatcherBudgetSettings;
-        return merged;
+        if (!isRecord(stored)) return seedState();
+
+        const now = getDemoNow();
+        const seeded = seedState({ asOfDate: now });
+        const storedAsOf = stored.demoMeta?.generatedAsOf;
+        if (currentRaw && stored.demoMeta?.schemaVersion === 5 && storedAsOf === todayKey(now)) {
+            return hydrateStoredState(stored, seeded);
+        }
+
+        const rebased = rebaseStoredState(stored, now);
+        writeStateToStorage(storage, rebased);
+        return rebased;
     } catch {
         return seedState();
     }
@@ -844,14 +1083,18 @@ function loadStoredState() {
 function persistState() {
     const storage = demoStorage();
     if (!storage) return;
-    try {
-        storage.setItem(DEMO_STORAGE_KEY, JSON.stringify(demoState));
-    } catch {
-        // Browser storage is an enhancement; the in-memory demo remains usable.
-    }
+    writeStateToStorage(storage, demoState);
 }
 
 let demoState = loadStoredState();
+
+export function ensureDemoStateFresh(asOfDate = getDemoNow()) {
+    const targetDate = todayKey(asOfDate);
+    if (demoState.demoMeta?.generatedAsOf === targetDate) return false;
+    demoState = rebaseStoredState(demoState, asOfDate);
+    persistState();
+    return true;
+}
 
 function resolveBudgetSeed(seed) {
     if (seed === 'legacy') return createLegacyBudgetSettings();
@@ -868,14 +1111,18 @@ function resolveBudgetSeed(seed) {
  * migration/read-parity tests. A document object may also be supplied when a
  * caller needs a deterministic custom seed.
  */
-export function resetDemoState(seed = 'default') {
-    demoState = seedState({ budgetSettings: resolveBudgetSeed(seed) });
+export function resetDemoState(seed = 'default', { asOfDate = getDemoNow() } = {}) {
+    demoState = seedState({ budgetSettings: resolveBudgetSeed(seed), asOfDate });
     const storage = demoStorage();
-    try { storage?.removeItem(DEMO_STORAGE_KEY); } catch { /* storage is optional */ }
-    return getDemoState();
+    try {
+        storage?.removeItem(DEMO_STORAGE_KEY);
+        storage?.removeItem(LEGACY_DEMO_STORAGE_KEY);
+    } catch { /* storage is optional */ }
+    return clone(demoState);
 }
 
 export function getDemoState() {
+    ensureDemoStateFresh();
     return clone(demoState);
 }
 
@@ -972,11 +1219,11 @@ function entityKey(entry) {
     return String(entry.AssetId || `${categoryForEntry(entry)?.Id || 'other'}:${entry.Name || entry.Id}`);
 }
 
-function visibleEntries(now = new Date()) {
+function visibleEntries(now = getDemoNow()) {
     return demoState.entries.filter(entry => isEntryVisibleAt(entry, now));
 }
 
-function allObservationDates(now = new Date()) {
+function allObservationDates(now = getDemoNow()) {
     return [...new Set([...visibleEntries(now).map(entry => entry.Date), todayKey()])].sort();
 }
 
@@ -986,7 +1233,7 @@ function periodStart(period) {
 }
 
 function buildCategoryHistory(category, period) {
-    const now = new Date();
+    const now = getDemoNow();
     const entries = demoState.entries
         .filter(entry => categoryForEntry(entry)?.Id === category.Id && isEntryVisibleAt(entry, now))
         .sort((left, right) => `${left.Date}T${left.Time || ''}`.localeCompare(`${right.Date}T${right.Time || ''}`));
@@ -1010,7 +1257,7 @@ function buildCategoryHistory(category, period) {
     });
     const aggregate = {
         Data: data,
-        LastSyncDateTime: new Date().toISOString(),
+        LastSyncDateTime: getDemoNow().toISOString(),
         LatestBreakdown: data.at(-1)?.Breakdown || {}
     };
     if (category.Id === 'property') {
@@ -1101,7 +1348,7 @@ function buildDashboard(period) {
                 DeltaInvested: (data.at(-1)?.Invested || 0) - (data[0]?.Invested || 0)
             };
         }).filter(item => item.CurrentValue !== 0 || item.Delta !== 0),
-        LastSyncDateTime: new Date().toISOString()
+        LastSyncDateTime: getDemoNow().toISOString()
     };
 }
 
@@ -1140,7 +1387,7 @@ function catalogueAssets(searchParams) {
 }
 
 function createAudit(message, providerName = 'Demo data', recordsAdded = 0) {
-    demoState.audits.unshift({ Id: nextId('audit'), StartTime: new Date().toISOString(), ProviderName: providerName, Status: 'Completed', StatusClass: 'success', RecordsAdded: recordsAdded, LogMessage: message });
+    demoState.audits.unshift({ Id: nextId('audit'), StartTime: getDemoNow().toISOString(), ProviderName: providerName, Status: 'Completed', StatusClass: 'success', RecordsAdded: recordsAdded, LogMessage: message });
 }
 
 function addEntry(payload, defaults = {}) {
@@ -1309,8 +1556,9 @@ function handleGet(path, searchParams) {
 }
 
 function buildCalendar(yearValue, monthValue) {
-    const year = Number(yearValue) || new Date().getUTCFullYear();
-    const month = Number(monthValue) || new Date().getUTCMonth() + 1;
+    const now = getDemoNow();
+    const year = Number(yearValue) || now.getUTCFullYear();
+    const month = Number(monthValue) || now.getUTCMonth() + 1;
     const first = new Date(Date.UTC(year, month - 1, 1));
     const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
     const allDates = allObservationDates();
@@ -1387,7 +1635,7 @@ function handleWrite(path, method, body, searchParams) {
     }
     if (path === '/sync' && method === 'POST') {
         createAudit('Demo sync completed.', 'Demo sync', 0);
-        return response({ Succeeded: true, Message: 'Demo data synchronized successfully.', LastSyncDateTime: new Date().toISOString() });
+        return response({ Succeeded: true, Message: 'Demo data synchronized successfully.', LastSyncDateTime: getDemoNow().toISOString() });
     }
     if (path === '/wealth' && method === 'POST') {
         if (!isRecord(body)) return errorResponse('A wealth entry object is required.', 400);
@@ -1463,7 +1711,7 @@ function handleWrite(path, method, body, searchParams) {
     if (valueMatch && (method === 'PATCH' || method === 'DELETE')) {
         const value = findValue(decodeURIComponent(valueMatch[1]));
         if (!value) return errorResponse(`Classification value '${valueMatch[1]}' was not found.`);
-        if (method === 'DELETE') value.ArchivedAt = new Date().toISOString();
+        if (method === 'DELETE') value.ArchivedAt = getDemoNow().toISOString();
         else updateObject(value, body);
         createAudit(`${method === 'DELETE' ? 'Archived' : 'Updated'} catalogue value ${value.DisplayName || value.Key}.`, 'Catalogue', 0);
         return response(clone(value));
@@ -1492,7 +1740,7 @@ function handleWrite(path, method, body, searchParams) {
             return response({ Succeeded: false, Message: 'The demo webhook relay is disabled.' });
         const testId = `demo-relay-test-${Date.now()}`;
         demoState.webhookRelay.LastTestId = testId;
-        demoState.webhookRelay.LastTestAt = new Date().toISOString();
+        demoState.webhookRelay.LastTestAt = getDemoNow().toISOString();
         return response({
             Succeeded: true,
             Message: 'The demo relay delivered a test event to the API.',
@@ -1737,6 +1985,7 @@ function buildForecast(request) {
 }
 
 export async function handleDemoRequest(url, options = {}) {
+    ensureDemoStateFresh();
     const { path, parsed } = parseRequestUrl(url);
     const method = String(options.method || 'GET').toUpperCase();
     let body;

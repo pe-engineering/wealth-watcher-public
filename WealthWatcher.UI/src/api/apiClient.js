@@ -39,6 +39,7 @@ function normalizeApiRequestUrl(url) {
 export async function apiRequest(url, options = {}) {
     const requestOptions = options || {};
     if (isDemoMode) {
+        await ensureDemoFresh();
         const { handleDemoRequest } = await import('../demo/demoApi.js');
         return handleDemoRequest(normalizeApiRequestUrl(url), requestOptions);
     }
@@ -107,7 +108,16 @@ export async function resetDemoData() {
     return true;
 }
 
+export async function ensureDemoFresh() {
+    if (!isDemoMode) return false;
+    const { ensureDemoStateFresh } = await import('../demo/demoApi.js');
+    const changed = ensureDemoStateFresh();
+    if (changed) store.clearCache();
+    return changed;
+}
+
 export async function fetchCached(url, options = null, cacheOptions = {}) {
+    if (isDemoMode) await ensureDemoFresh();
     const method = options?.method || 'GET';
     const body = options?.body || '';
     const throwOnError = cacheOptions.throwOnError === true;
