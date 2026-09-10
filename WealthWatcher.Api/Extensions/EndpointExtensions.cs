@@ -662,10 +662,8 @@ public static class EndpointExtensions
             {
                 var providerCode = entry.SourceLink?.ExternalValue?.IntegrationAccount?.IntegrationConnection
                     ?.IntegrationProvider?.Code;
-                return (entry.SourceLink?.SourceKind == AssetValueEntrySourceKind.Integration &&
-                        (string.IsNullOrWhiteSpace(providerCode) || configuredProviderCodes.Contains(providerCode))) ||
-                       (!string.IsNullOrWhiteSpace(entry.ProviderKey) &&
-                        configuredProviderCodes.Contains(entry.ProviderKey));
+                return entry.SourceLink?.SourceKind == AssetValueEntrySourceKind.Integration &&
+                       (string.IsNullOrWhiteSpace(providerCode) || configuredProviderCodes.Contains(providerCode));
             }
 
             bool IsUndeployedEntry(AssetValueEntry entry) =>
@@ -753,6 +751,12 @@ public static class EndpointExtensions
                 .GroupBy(pair => runningBalanceNames.TryGetValue(pair.Key, out var name) ? name : pair.Key)
                 .ToDictionary(group => group.Key, group => group.Sum(pair => pair.Value));
 
+            Dictionary<string, decimal>? BuildPropertyValues() => !isPropertyCategory
+                ? null
+                : runningPropertyValues
+                    .GroupBy(pair => runningBalanceNames.TryGetValue(pair.Key, out var name) ? name : pair.Key)
+                    .ToDictionary(group => group.Key, group => group.Sum(pair => pair.Value));
+
             var cutoff = ResolveCutoff(period, isOneHourPeriod, effectiveNowUtc, localTimeZone, allEntries);
                     var resultData = new List<WealthAggregatePoint>();
             if (isOneHourPeriod)
@@ -789,6 +793,7 @@ public static class EndpointExtensions
                             Value = runningBalances.Values.Sum(),
                             GrossValue = isPropertyCategory ? runningPropertyValues.Values.Sum() : null,
                             Equity = isPropertyCategory ? runningBalances.Values.Sum() : null,
+                            PropertyValues = BuildPropertyValues(),
                             Invested = runningInvested.Values.Sum(),
                             HasObservation = hasObservation,
                             Breakdown = BuildBreakdown()
@@ -822,6 +827,7 @@ public static class EndpointExtensions
                         Value = runningBalances.Values.Sum(),
                         GrossValue = isPropertyCategory ? runningPropertyValues.Values.Sum() : null,
                         Equity = isPropertyCategory ? runningBalances.Values.Sum() : null,
+                        PropertyValues = BuildPropertyValues(),
                         Invested = runningInvested.Values.Sum(),
                         HasObservation = hasObservation,
                         Breakdown = BuildBreakdown()

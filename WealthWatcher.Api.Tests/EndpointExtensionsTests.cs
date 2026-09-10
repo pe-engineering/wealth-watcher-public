@@ -871,6 +871,9 @@ public sealed class EndpointExtensionsTests
         Assert.Equal(220m, history[^1].GetProperty("Value").GetDecimal());
         Assert.Equal(510m, history[^1].GetProperty("GrossValue").GetDecimal());
         Assert.Equal(220m, history[^1].GetProperty("Equity").GetDecimal());
+        var propertyValues = history[^1].GetProperty("PropertyValues");
+        Assert.Equal(210m, propertyValues.GetProperty("Home").GetDecimal());
+        Assert.Equal(300m, propertyValues.GetProperty("Rental").GetDecimal());
     }
 
     [Fact]

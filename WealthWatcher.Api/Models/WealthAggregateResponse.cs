@@ -20,6 +20,8 @@ public sealed class WealthAggregatePoint
     public decimal? GrossValue { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public decimal? Equity { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, decimal>? PropertyValues { get; init; }
     public decimal Invested { get; init; }
     public bool HasObservation { get; init; }
     public Dictionary<string, decimal> Breakdown { get; init; } = new(StringComparer.OrdinalIgnoreCase);

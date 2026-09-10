@@ -79,6 +79,7 @@ test('core demo response shapes remain usable by their pages', async () => {
     assert.ok(propertyHistory.length > 0);
     assert.equal(typeof propertyHistory.at(-1).GrossValue, 'number');
     assert.equal(typeof propertyHistory.at(-1).Equity, 'number');
+    assert.equal(typeof propertyHistory.at(-1).PropertyValues, 'object');
 
     const history = await (await handleDemoRequest('/api/history?period=1M')).json();
     assert.ok(Array.isArray(history.Categories));

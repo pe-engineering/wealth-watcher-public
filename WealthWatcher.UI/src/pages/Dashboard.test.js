@@ -172,6 +172,7 @@ const {
     setupPeriodListeners,
     aggregateAssetCardHistory,
     buildAssetCardChartSeries,
+    buildPropertyInsightContributors,
     getDashboardAssetName,
     getActiveUnclassifiedAssetCount,
     renderUnclassifiedAssetBanner
@@ -210,6 +211,24 @@ test('property asset-card charts keep gross value and equity as separate series'
     assert.deepEqual(series[0].data, [200, 225]);
     assert.equal(series[1].label, 'Equity');
     assert.deepEqual(series[1].data, [100, 125]);
+});
+
+test('property insight contributors separate linked value movement from mortgage-driven equity', () => {
+    const past = {
+        PropertyValues: { Home: 300000 },
+        Breakdown: { Home: 120000 }
+    };
+    const current = {
+        PropertyValues: { Home: 310000 },
+        Breakdown: { Home: 135000 }
+    };
+
+    const contributors = buildPropertyInsightContributors(current, past, '#f59e0b');
+
+    assert.deepEqual(contributors.map(item => [item.name, item.delta]), [
+        ['Home value', 10000],
+        ['Home equity', 5000]
+    ]);
 });
 
 test('Dashboard shows an accessible Unclassified banner only above the threshold', () => {
