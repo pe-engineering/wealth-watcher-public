@@ -727,7 +727,7 @@ public sealed class EndpointExtensionsTests
     }
 
     [Fact]
-    public async Task Aggregate_daily_regression_is_unchanged()
+    public async Task Aggregate_day_starts_at_today()
     {
         await using var host = await ForecastHost.CreateAsync(
         [
@@ -738,11 +738,10 @@ public sealed class EndpointExtensionsTests
         using var response = await host.GetAggregateAsync("investments", "1D");
         var data = response.RootElement.GetProperty("Data").EnumerateArray().ToArray();
 
-        Assert.Equal(new[] { "2026-06-14", "2026-06-15" }, data.Select(point => point.GetProperty("Time").GetString()));
-        Assert.Equal(100m, data[0].GetProperty("Value").GetDecimal());
-        Assert.Equal(120m, data[1].GetProperty("Value").GetDecimal());
-        Assert.False(data[0].GetProperty("HasObservation").GetBoolean());
-        Assert.True(data[1].GetProperty("HasObservation").GetBoolean());
+        Assert.Single(data);
+        Assert.Equal("2026-06-15", data[0].GetProperty("Time").GetString());
+        Assert.Equal(120m, data[0].GetProperty("Value").GetDecimal());
+        Assert.True(data[0].GetProperty("HasObservation").GetBoolean());
     }
 
     [Fact]
@@ -757,10 +756,29 @@ public sealed class EndpointExtensionsTests
         using var response = await host.GetAggregateAsync("investments", "1D");
         var data = response.RootElement.GetProperty("Data").EnumerateArray().ToArray();
 
+        Assert.Single(data);
         Assert.Equal(100m, data[0].GetProperty("Value").GetDecimal());
-        Assert.Equal(100m, data[1].GetProperty("Value").GetDecimal());
-        Assert.False(data[0].GetProperty("HasObservation").GetBoolean());
-        Assert.True(data[1].GetProperty("HasObservation").GetBoolean());
+        Assert.True(data[0].GetProperty("HasObservation").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("1W", "2026-06-09")]
+    [InlineData("1M", "2026-05-15")]
+    [InlineData("3M", "2026-03-15")]
+    [InlineData("YTD", "2026-01-01")]
+    public async Task Aggregate_period_starts_at_the_requested_calendar_boundary(
+        string period,
+        string expectedStart)
+    {
+        await using var host = await ForecastHost.CreateAsync(
+        [InvestmentAt("Fund", 100m, 80m, Utc(2026, 1, 1, 12, 0))],
+        Utc(2026, 6, 15, 13, 0));
+
+        using var response = await host.GetAggregateAsync("investments", period);
+        var data = response.RootElement.GetProperty("Data").EnumerateArray().ToArray();
+
+        Assert.Equal(expectedStart, data[0].GetProperty("Time").GetString());
+        Assert.Equal("2026-06-15", data[^1].GetProperty("Time").GetString());
     }
 
     [Fact(Skip = "Hourly aggregation retired")]

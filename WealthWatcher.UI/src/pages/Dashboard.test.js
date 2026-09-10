@@ -192,10 +192,10 @@ test('asset-card chart aggregation uses range-aware closing buckets and prefers 
     assert.equal(quarterly[2].Time, '2026-01-06');
     assert.equal(quarterly.at(-1).Time, '2026-01-15');
 
-    const yearly = aggregateAssetCardHistory(history, '1Y');
-    assert.equal(yearly.length, 3);
-    assert.equal(yearly[0].Time, '2026-01-06');
-    assert.equal(yearly.at(-1).Time, '2026-01-15');
+    const yearToDate = aggregateAssetCardHistory(history, 'YTD');
+    assert.equal(yearToDate.length, 3);
+    assert.equal(yearToDate[0].Time, '2026-01-06');
+    assert.equal(yearToDate.at(-1).Time, '2026-01-15');
 });
 
 test('property asset-card charts keep gross value and equity as separate series', () => {

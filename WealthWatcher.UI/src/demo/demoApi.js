@@ -1228,8 +1228,16 @@ function allObservationDates(now = getDemoNow()) {
 }
 
 function periodStart(period) {
-    const days = ({ '1D': 1, '1W': 7, '1M': 31, '3M': 93, '6M': 186, '1Y': 366 }[String(period).toUpperCase()] ?? null);
-    return days ? dateKey(addDays(todayKey(), -days)) : null;
+    const normalized = String(period).toUpperCase();
+    const today = new Date(`${todayKey()}T00:00:00Z`);
+    if (normalized === '1D') return todayKey();
+    if (normalized === '1W') return dateKey(addDays(todayKey(), -6));
+    if (normalized === 'YTD') return `${today.getUTCFullYear()}-01-01`;
+    if (normalized === '1M') today.setUTCMonth(today.getUTCMonth() - 1);
+    else if (normalized === '3M') today.setUTCMonth(today.getUTCMonth() - 3);
+    else if (normalized === '1Y') today.setUTCFullYear(today.getUTCFullYear() - 1);
+    else return null;
+    return today.toISOString().slice(0, 10);
 }
 
 function buildCategoryHistory(category, period) {

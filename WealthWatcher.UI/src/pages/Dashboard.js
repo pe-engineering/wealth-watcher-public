@@ -586,10 +586,10 @@ function createDashboardEmptyState(view) {
                         <span class="presentation-preview-label">Illustrative preview</span>
                         <strong>Wealth Watcher</strong>
                     </div>
-                    <span class="presentation-preview-status">1M example</span>
+                    <span class="presentation-preview-status">Month example</span>
                 </div>
                 <div class="dashboard-preview-toolbar" aria-hidden="true">
-                    <div class="dashboard-preview-periods"><span>1D</span><span>1W</span><span class="active">1M</span><span>3M</span><span>1Y</span><span>MAX</span></div>
+                    <div class="dashboard-preview-periods"><span>Day</span><span>Week</span><span class="active">Month</span><span>3 Months</span><span title="Year To Date">YTD</span><span>MAX</span></div>
                     <div class="dashboard-preview-actions"><i>↻</i><i>◌</i></div>
                 </div>
                 <div class="dashboard-preview-total">
@@ -1531,7 +1531,7 @@ export function aggregateAssetCardHistory(history, period = '1M') {
     const spanDays = Math.max(1, Math.ceil((points.at(-1).timestamp - points[0].timestamp) / DAY_IN_MILLISECONDS));
     const bucketDays = normalizedPeriod === '3M'
         ? 2
-        : normalizedPeriod === '1Y'
+        : normalizedPeriod === 'YTD' || normalizedPeriod === '1Y'
             ? 7
             : normalizedPeriod === 'MAX'
                 ? Math.max(1, Math.ceil(spanDays / 90))

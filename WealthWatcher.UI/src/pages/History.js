@@ -17,7 +17,7 @@ let historyControlsBound = false;
 let historyPageState = PAGE_STATUS.LOADING;
 const historyRequests = createPageRequestController();
 
-const HISTORY_PERIODS = ['1D', '1W', '1M', '3M', '1Y', 'MAX'];
+const HISTORY_PERIODS = ['1D', '1W', '1M', '3M', 'YTD', 'MAX'];
 export const HISTORY_TREND_STORAGE_KEY = 'wealthwatcher_history_show_trend';
 
 export async function loadHistoryView() {

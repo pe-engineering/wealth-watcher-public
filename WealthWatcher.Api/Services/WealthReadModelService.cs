@@ -394,16 +394,15 @@ public sealed class WealthReadModelService(
         {
             if (period.Equals("YTD", StringComparison.OrdinalIgnoreCase))
                 return new DateTime(nowUtc.Year, 1, 1);
-            var days = period.ToUpperInvariant() switch
+            return period.ToUpperInvariant() switch
             {
-                "1D" => 1,
-                "1W" => 7,
-                "1M" => 30,
-                "3M" => 90,
-                "1Y" => 365,
-                _ => 30
+                "1D" => nowUtc.Date,
+                "1W" => nowUtc.Date.AddDays(-6),
+                "1M" => nowUtc.Date.AddMonths(-1),
+                "3M" => nowUtc.Date.AddMonths(-3),
+                "1Y" => nowUtc.Date.AddYears(-1),
+                _ => nowUtc.Date.AddMonths(-1)
             };
-            return nowUtc.Date.AddDays(-days);
         }
         return entries.Count > 0 ? entries[0].Date.ToDateTime(TimeOnly.MinValue) : nowUtc.Date;
     }
