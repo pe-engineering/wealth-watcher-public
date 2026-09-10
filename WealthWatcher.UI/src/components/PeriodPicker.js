@@ -1,4 +1,10 @@
-export const STANDARD_PERIODS = Object.freeze(['1H', '1D', '1W', '1M', '3M', '1Y', 'MAX']);
+export const STANDARD_PERIODS = Object.freeze(['1D', '1W', '1M', '3M', '1Y', 'MAX']);
+
+export function normalizePeriod(period, fallback = '1M') {
+    const normalized = String(period || '').toUpperCase();
+    if (STANDARD_PERIODS.includes(normalized)) return normalized;
+    return normalized === '1H' ? '1D' : fallback;
+}
 
 function resolveContainer(container) {
     if (!container) return null;

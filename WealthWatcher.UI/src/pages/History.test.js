@@ -183,11 +183,10 @@ test('history range buttons reload the selected standard period', async () => {
     store.clearCache();
     requestedUrls.length = 0;
 
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    await elements.get('history-range-1h').dispatchEvent({ type: 'click' });
+    await elements.get('history-range-1d').dispatchEvent({ type: 'click' });
 
     assert.deepEqual(requestedUrls, [
-        `http://localhost:5000/api/history?period=1H&timeZone=${encodeURIComponent(timeZone)}`
+        'http://localhost:5000/api/history?period=1D'
     ]);
 });
 

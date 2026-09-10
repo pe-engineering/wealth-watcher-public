@@ -4,7 +4,7 @@ import flatpickr from 'flatpickr';
 import { store } from './store/store.js';
 import * as apiClient from './api/apiClient.js';
 import { setupRouter, handleRouting } from './router/router.js';
-import { loadDashboard, setupPeriodListeners, setupHourlyRefreshLifecycle, setupDashboardActions } from './pages/Dashboard.js';
+import { loadDashboard, setupPeriodListeners, setupDashboardActions } from './pages/Dashboard.js';
 import { openModal, setupModals } from './components/Modals.js';
 import { setupForecast } from './pages/ForecastV2.js';
 import { setupCurrencyInputs } from './utils/formatters.js';
@@ -338,7 +338,6 @@ async function init() {
         setupBudgetSettings();
         setupMilestoneSettings();
         setupRouter();
-        setupHourlyRefreshLifecycle();
         setupCurrencyInputs();
         initAllCollapsiblePanes();
         

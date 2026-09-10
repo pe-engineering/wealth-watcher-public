@@ -3,7 +3,7 @@ import { fetchFreshStrict, API_BASE_URL } from '../api/apiClient.js';
 import { setPageLoading } from '../components/PageLoading.js';
 import { PAGE_STATUS, setPageStatus } from '../components/PageState.js';
 import { createPageRequestController } from '../components/PageRequest.js';
-import { bindPeriodPicker, syncPeriodPicker } from '../components/PeriodPicker.js';
+import { bindPeriodPicker, normalizePeriod, syncPeriodPicker } from '../components/PeriodPicker.js';
 import { chartDataRows, renderAccessibleChartData } from '../components/AccessibleChartData.js';
 import { normalizeTimelineEntries } from '../components/TimelineModel.js';
 import { compactCurrencyFormatter, currencyFormatter, percentFormatter } from '../utils/formatters.js';
@@ -17,7 +17,7 @@ let historyControlsBound = false;
 let historyPageState = PAGE_STATUS.LOADING;
 const historyRequests = createPageRequestController();
 
-const HISTORY_PERIODS = ['1H', '1D', '1W', '1M', '3M', '1Y', 'MAX'];
+const HISTORY_PERIODS = ['1D', '1W', '1M', '3M', '1Y', 'MAX'];
 export const HISTORY_TREND_STORAGE_KEY = 'wealthwatcher_history_show_trend';
 
 export async function loadHistoryView() {
@@ -66,16 +66,13 @@ export function setHistoryTrendPreference(value, storage = getHistoryTrendStorag
 }
 
 async function loadHistoryPeriod(period) {
+    period = normalizePeriod(period);
     const requestId = historyRequests.next();
     historyPageState = PAGE_STATUS.LOADING;
     historySnapshot = null;
     renderHistoryPageState();
     setPageLoading('history-view', true);
-    const timeZone = period === '1H'
-        ? Intl.DateTimeFormat().resolvedOptions().timeZone
-        : null;
-    const requestUrl = `${API_BASE_URL}/history?period=${encodeURIComponent(period)}${
-        timeZone ? `&timeZone=${encodeURIComponent(timeZone)}` : ''}`;
+    const requestUrl = `${API_BASE_URL}/history?period=${encodeURIComponent(period)}`;
     try {
         const response = await fetchFreshStrict(requestUrl);
         const categories = Array.isArray(response?.Categories) ? response.Categories : [];
@@ -675,7 +672,7 @@ function monthTickCallback(value, index, ticks) {
 
 function historyTickCallback(value, index, ticks) {
     const dateValue = this.getLabelForValue(value);
-    if (historyPeriod === '1H' || historyPeriod === '1D') {
+    if (historyPeriod === '1D') {
         return formatTimeAxisDate(dateValue);
     }
     if (historyPeriod === '1W' || historyPeriod === '1M' || historyPeriod === '3M') {
@@ -732,9 +729,7 @@ function formatTimeAxisDate(dateValue) {
 
 function formatFullDate(dateValue) {
     if (!dateValue) return '';
-    const options = historyPeriod === '1H'
-        ? { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }
-        : { day: 'numeric', month: 'short', year: 'numeric' };
+    const options = { day: 'numeric', month: 'short', year: 'numeric' };
     return new Intl.DateTimeFormat('en-GB', options).format(parseHistoryDate(dateValue));
 }
 

@@ -9,7 +9,6 @@ import { loadBudgetView, populateBudgetSettings } from '../pages/Budget.js';
 import { expandPane, initAllCollapsiblePanes } from '../components/CollapsiblePane.js';
 import { populateFireFeatureSettings } from '../components/FireSettings.js';
 import { populateMilestoneSettings } from '../components/Milestones.js';
-import { updateHourlyRefreshLifecycle } from '../pages/Dashboard.js';
 import { applyFeatureVisibility, getFeatureKeyForRoute, isFeatureEnabled } from '../utils/featureFlags.js';
 
 export function setupRouter() {
@@ -163,7 +162,6 @@ export function handleRouting() {
         }
         syncActiveNavState();
         syncApplicationLinkState('#dashboard');
-        updateHourlyRefreshLifecycle({ immediate: true });
         return;
     }
     
@@ -246,5 +244,4 @@ export function handleRouting() {
 
     syncActiveNavState();
     syncApplicationLinkState(route);
-    updateHourlyRefreshLifecycle({ immediate: route === '#dashboard' });
 }
