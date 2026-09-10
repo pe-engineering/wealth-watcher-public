@@ -16,7 +16,6 @@ public sealed class WealthReadModelService(
 {
     public async Task<IReadOnlyList<WealthCategoryAggregate>> GetAggregatesAsync(
         string? period,
-        string? timeZone,
         DateOnly? asOfDate,
         CancellationToken cancellationToken = default)
     {
@@ -31,7 +30,6 @@ public sealed class WealthReadModelService(
 
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
         var effectiveNowUtc = asOfDate?.ToDateTime(TimeOnly.MaxValue) ?? nowUtc;
-        var localTimeZone = ResolveTimeZone(period, timeZone);
         var providerCodes = (await db.IntegrationProviders
                 .AsNoTracking()
                 .Select(provider => provider.Code)
@@ -73,7 +71,6 @@ public sealed class WealthReadModelService(
                         categoryEntries,
                         period,
                         effectiveNowUtc,
-                        localTimeZone,
                         providerCodes)
                 };
             })
@@ -167,28 +164,17 @@ public sealed class WealthReadModelService(
             ids.Add(assignment.AssetKindId);
     }
 
-    private static TimeZoneInfo? ResolveTimeZone(string? period, string? timeZone)
-    {
-        if (!string.Equals(period, "1H", StringComparison.OrdinalIgnoreCase))
-            return null;
-        if (string.IsNullOrWhiteSpace(timeZone))
-            throw new ArgumentException("A timeZone query parameter is required for 1H aggregation.");
-        return TimeZoneInfo.FindSystemTimeZoneById(timeZone);
-    }
-
     private static WealthAggregateResponse BuildAggregate(
         AssetKind categoryKind,
         IReadOnlyList<AssetValueEntry> allEntries,
         string? period,
         DateTime effectiveNowUtc,
-        TimeZoneInfo? localTimeZone,
         IReadOnlySet<string> configuredProviderCodes)
     {
         if (allEntries.Count == 0)
             return new WealthAggregateResponse();
 
         var isPropertyCategory = categoryKind.Code.Equals(AssetKindCodes.Property, StringComparison.OrdinalIgnoreCase);
-        var isOneHourPeriod = period?.Equals("1H", StringComparison.OrdinalIgnoreCase) == true;
         var lastVisibleEntry = allEntries.LastOrDefault(entry => EntryTimestampUtc(entry) <= effectiveNowUtc)
                                ?? allEntries.Last();
         var lastSync = new DateTimeOffset(EntryTimestampUtc(lastVisibleEntry), TimeSpan.Zero);
@@ -290,75 +276,35 @@ public sealed class WealthReadModelService(
             .GroupBy(pair => runningBalanceNames.TryGetValue(pair.Key, out var name) ? name : pair.Key)
             .ToDictionary(group => group.Key, group => group.Sum(pair => pair.Value));
 
-        var cutoff = ResolveCutoff(period, isOneHourPeriod, effectiveNowUtc, localTimeZone, allEntries);
+        var cutoff = ResolveCutoff(period, effectiveNowUtc, allEntries);
         var resultData = new List<WealthAggregatePoint>();
-        if (isOneHourPeriod)
-        {
-            foreach (var entry in allEntries.Where(entry => EntryTimestampUtc(entry) < cutoff))
-                RecordEntry(entry, SetRunningBalance, runningInvested, EntryIdentity);
-            RemoveArchivedBalances(cutoff);
+        var cutoffDate = DateOnly.FromDateTime(cutoff);
+        var todayDate = DateOnly.FromDateTime(effectiveNowUtc);
+        foreach (var entry in allEntries.Where(entry => entry.Date < cutoffDate))
+            RecordEntry(entry, SetRunningBalance, runningInvested, EntryIdentity);
+        RemoveArchivedBalances(cutoff);
 
-            var currentInstant = new DateTimeOffset(effectiveNowUtc, TimeSpan.Zero);
-            var entriesForToday = allEntries
-                .Select(entry => (Entry: entry, Timestamp: new DateTimeOffset(EntryTimestampUtc(entry), TimeSpan.Zero)))
-                .Where(item => item.Timestamp.UtcDateTime >= cutoff && item.Timestamp <= currentInstant)
-                .OrderBy(item => item.Timestamp)
-                .ToList();
-            var nextEntryIndex = 0;
-            for (var bucketStart = new DateTimeOffset(cutoff, TimeSpan.Zero);
-                 bucketStart <= currentInstant;
-                 bucketStart = bucketStart.AddHours(1))
-            {
-                var bucketEnd = bucketStart.AddHours(1);
-                var hasObservation = false;
-                while (nextEntryIndex < entriesForToday.Count && entriesForToday[nextEntryIndex].Timestamp < bucketEnd)
-                {
-                    var item = entriesForToday[nextEntryIndex++];
-                    hasObservation = true;
-                    RecordEntry(item.Entry, SetRunningBalance, runningInvested, EntryIdentity);
-                }
-                RemoveArchivedBalances(bucketStart.UtcDateTime);
-                if (runningBalances.Count > 0)
-                    resultData.Add(new WealthAggregatePoint
-                    {
-                        Time = TimeZoneInfo.ConvertTime(bucketStart, localTimeZone!).ToString("o"),
-                        Value = runningBalances.Values.Sum(),
-                        Invested = runningInvested.Values.Sum(),
-                        HasObservation = hasObservation,
-                        Breakdown = BuildBreakdown()
-                    });
-            }
-        }
-        else
+        var entriesFromCutoff = allEntries
+            .Where(entry => entry.Date >= cutoffDate &&
+                            (entry.Date < todayDate || EntryTimestampUtc(entry) <= effectiveNowUtc))
+            .GroupBy(entry => entry.Date)
+            .ToDictionary(group => group.Key, group => group.ToList());
+        for (var currentDate = cutoffDate; currentDate <= todayDate; currentDate = currentDate.AddDays(1))
         {
-            var cutoffDate = DateOnly.FromDateTime(cutoff);
-            var todayDate = DateOnly.FromDateTime(effectiveNowUtc);
-            foreach (var entry in allEntries.Where(entry => entry.Date < cutoffDate))
-                RecordEntry(entry, SetRunningBalance, runningInvested, EntryIdentity);
-            RemoveArchivedBalances(cutoff);
-
-            var entriesFromCutoff = allEntries
-                .Where(entry => entry.Date >= cutoffDate &&
-                                (entry.Date < todayDate || EntryTimestampUtc(entry) <= effectiveNowUtc))
-                .GroupBy(entry => entry.Date)
-                .ToDictionary(group => group.Key, group => group.ToList());
-            for (var currentDate = cutoffDate; currentDate <= todayDate; currentDate = currentDate.AddDays(1))
+            RemoveArchivedBalances(currentDate.ToDateTime(TimeOnly.MinValue));
+            var hasObservation = entriesFromCutoff.TryGetValue(currentDate, out var dayEntries);
+            if (dayEntries is not null)
+                foreach (var entry in dayEntries)
+                    RecordEntry(entry, SetRunningBalance, runningInvested, EntryIdentity);
+            RemoveArchivedBalances(currentDate.ToDateTime(TimeOnly.MaxValue));
+            resultData.Add(new WealthAggregatePoint
             {
-                RemoveArchivedBalances(currentDate.ToDateTime(TimeOnly.MinValue));
-                var hasObservation = entriesFromCutoff.TryGetValue(currentDate, out var dayEntries);
-                if (dayEntries is not null)
-                    foreach (var entry in dayEntries)
-                        RecordEntry(entry, SetRunningBalance, runningInvested, EntryIdentity);
-                RemoveArchivedBalances(currentDate.ToDateTime(TimeOnly.MaxValue));
-                resultData.Add(new WealthAggregatePoint
-                {
-                    Time = currentDate.ToString("yyyy-MM-dd"),
-                    Value = runningBalances.Values.Sum(),
-                    Invested = runningInvested.Values.Sum(),
-                    HasObservation = hasObservation,
-                    Breakdown = BuildBreakdown()
-                });
-            }
+                Time = currentDate.ToString("yyyy-MM-dd"),
+                Value = runningBalances.Values.Sum(),
+                Invested = runningInvested.Values.Sum(),
+                HasObservation = hasObservation,
+                Breakdown = BuildBreakdown()
+            });
         }
 
         PropertyAggregateDetails? propertyDetails = null;
@@ -427,18 +373,9 @@ public sealed class WealthReadModelService(
 
     private static DateTime ResolveCutoff(
         string? period,
-        bool isOneHourPeriod,
         DateTime nowUtc,
-        TimeZoneInfo? localTimeZone,
         IReadOnlyList<AssetValueEntry> entries)
     {
-        if (isOneHourPeriod)
-        {
-            var localNow = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, localTimeZone!);
-            return TimeZoneInfo.ConvertTimeToUtc(
-                DateTime.SpecifyKind(localNow.Date, DateTimeKind.Unspecified),
-                localTimeZone!);
-        }
         if (!string.IsNullOrWhiteSpace(period) &&
             !period.Equals("MAX", StringComparison.OrdinalIgnoreCase) &&
             !period.Equals("ALL", StringComparison.OrdinalIgnoreCase))

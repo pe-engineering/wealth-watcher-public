@@ -169,9 +169,7 @@ const { store } = await import('../store/store.js');
 const {
     forceSync,
     loadDashboard,
-    setupHourlyRefreshLifecycle,
     setupPeriodListeners,
-    updateHourlyRefreshLifecycle,
     getDashboardAssetName,
     getActiveUnclassifiedAssetCount,
     renderUnclassifiedAssetBanner
@@ -258,11 +256,10 @@ test('Dashboard escapes dynamic labels and rejects invalid card colors', async (
         mockApiResponses = {};
         chartConfigurations = [];
         fetchRequests = [];
-        updateHourlyRefreshLifecycle();
     }
 });
 
-test('Dashboard period selection reloads aggregates for 1H', async () => {
+test('Dashboard period selection reloads aggregates for 1D', async () => {
     const originalPeriod = store.state.currentPeriod;
     const originalCategories = store.state.CATEGORIES;
 
@@ -278,14 +275,14 @@ test('Dashboard period selection reloads aggregates for 1H', async () => {
         const oneMonthButton = createElement('button');
         oneMonthButton.className = 'period-btn active';
         oneMonthButton.setAttribute('data-period', '1M');
-        const oneHourButton = createElement('button');
-        oneHourButton.className = 'period-btn';
-        oneHourButton.setAttribute('data-period', '1H');
-        periodButtons = [oneMonthButton, oneHourButton];
+        const oneDayButton = createElement('button');
+        oneDayButton.className = 'period-btn';
+        oneDayButton.setAttribute('data-period', '1D');
+        periodButtons = [oneMonthButton, oneDayButton];
 
         mockApiResponses = {
-            '/wealth/cash/aggregate?period=1H': {
-                Data: [{ Time: '2026-07-30T11:00', Value: 1000, Invested: 1000 }],
+            '/wealth/cash/aggregate?period=1D': {
+                Data: [{ Time: '2026-07-30', Value: 1000, Invested: 1000 }],
                 IsManual: true,
                 LatestBreakdown: { 'Current Account': 1000 }
             },
@@ -295,13 +292,13 @@ test('Dashboard period selection reloads aggregates for 1H', async () => {
         };
 
         setupPeriodListeners();
-        oneHourButton.dispatchEvent({ type: 'click', target: oneHourButton });
+        oneDayButton.dispatchEvent({ type: 'click', target: oneDayButton });
         await new Promise(resolve => setTimeout(resolve, 20));
 
-        assert.equal(store.state.currentPeriod, '1H');
+        assert.equal(store.state.currentPeriod, '1D');
         assert.ok(!oneMonthButton.className.split(' ').includes('active'));
-        assert.ok(oneHourButton.className.split(' ').includes('active'));
-        assert.ok(fetchRequests.some(url => url.includes('/dashboard?period=1H')));
+        assert.ok(oneDayButton.className.split(' ').includes('active'));
+        assert.ok(fetchRequests.some(url => url.includes('/dashboard?period=1D')));
     } finally {
         store.clearCache();
         store.state.currentPeriod = originalPeriod;
@@ -309,7 +306,6 @@ test('Dashboard period selection reloads aggregates for 1H', async () => {
         mockApiResponses = {};
         fetchRequests = [];
         periodButtons = [];
-        updateHourlyRefreshLifecycle();
     }
 });
 
@@ -333,10 +329,10 @@ test('Dashboard category cards render selected-period deltas and update them aft
         const oneMonthButton = createElement('button');
         oneMonthButton.className = 'period-btn active';
         oneMonthButton.setAttribute('data-period', '1M');
-        const oneHourButton = createElement('button');
-        oneHourButton.className = 'period-btn';
-        oneHourButton.setAttribute('data-period', '1H');
-        periodButtons = [oneMonthButton, oneHourButton];
+        const oneDayButton = createElement('button');
+        oneDayButton.className = 'period-btn';
+        oneDayButton.setAttribute('data-period', '1D');
+        periodButtons = [oneMonthButton, oneDayButton];
 
         mockApiResponses = {
             '/wealth/cash/aggregate?period=1M': {
@@ -360,7 +356,7 @@ test('Dashboard category cards render selected-period deltas and update them aft
                 IsManual: true,
                 LatestBreakdown: { 'Savings Account': 500 }
             },
-            '/wealth/cash/aggregate?period=1H': {
+            '/wealth/cash/aggregate?period=1D': {
                 Data: [
                     { Time: '2026-07-30T11:00', Value: 120, Invested: 120 },
                     { Time: '2026-07-30T12:00', Value: 130, Invested: 130 }
@@ -368,7 +364,7 @@ test('Dashboard category cards render selected-period deltas and update them aft
                 IsManual: true,
                 LatestBreakdown: { 'Current Account': 130 }
             },
-            '/wealth/pensions/aggregate?period=1H': {
+            '/wealth/pensions/aggregate?period=1D': {
                 Data: [
                     { Time: '2026-07-30T11:00', Value: 150, Invested: 150 },
                     { Time: '2026-07-30T12:00', Value: 150, Invested: 150 }
@@ -376,7 +372,7 @@ test('Dashboard category cards render selected-period deltas and update them aft
                 IsManual: false,
                 LatestBreakdown: { 'SIPP': 150 }
             },
-            '/wealth/savings/aggregate?period=1H': {
+            '/wealth/savings/aggregate?period=1D': {
                 Data: [{ Time: '2026-07-30T12:00', Value: 500, Invested: 500 }],
                 IsManual: true,
                 LatestBreakdown: { 'Savings Account': 500 }
@@ -394,12 +390,12 @@ test('Dashboard category cards render selected-period deltas and update them aft
         assert.ok(initialHtml.includes('card-delta  obfuscate-val">+£0.00 (0.00%)'), 'zero-baseline card delta remains finite and non-negative');
 
         setupPeriodListeners();
-        oneHourButton.dispatchEvent({ type: 'click', target: oneHourButton });
+        oneDayButton.dispatchEvent({ type: 'click', target: oneDayButton });
         await new Promise(resolve => setTimeout(resolve, 20));
 
-        const hourlyHtml = elements.get('liquid-grid').innerHTML;
-        assert.ok(hourlyHtml.includes('card-delta  obfuscate-val">+£10.00 (8.33%)'), 'card delta refreshes when the selected period changes');
-        assert.ok(fetchRequests.some(url => url.includes('/dashboard?period=1H')));
+        const dailyHtml = elements.get('liquid-grid').innerHTML;
+        assert.ok(dailyHtml.includes('card-delta  obfuscate-val">+£10.00 (8.33%)'), 'card delta refreshes when the selected period changes');
+        assert.ok(fetchRequests.some(url => url.includes('/dashboard?period=1D')));
     } finally {
         store.clearCache();
         store.state.currentPeriod = originalPeriod;
@@ -408,7 +404,6 @@ test('Dashboard category cards render selected-period deltas and update them aft
         mockApiResponses = {};
         fetchRequests = [];
         periodButtons = [];
-        updateHourlyRefreshLifecycle();
     }
 });
 
@@ -1203,7 +1198,7 @@ test('Dashboard renders configured AssetGroup values without liquid or illiquid 
     }
 });
 
-test('Dashboard sends the browser timezone for 1H and formats hourly chart tooltips', async () => {
+test.skip('retired 1H timezone behavior', async () => {
     const originalPeriod = store.state.currentPeriod;
     const originalCategories = store.state.CATEGORIES;
     const originalObfuscation = window.isObfuscated;
@@ -1263,7 +1258,7 @@ test('Dashboard sends the browser timezone for 1H and formats hourly chart toolt
     }
 });
 
-test('Dashboard hourly refresh lifecycle polls only while eligible without caching current-day data', async () => {
+test.skip('retired hourly refresh lifecycle', async () => {
     const originals = {
         categories: store.state.CATEGORIES,
         period: store.state.currentPeriod,

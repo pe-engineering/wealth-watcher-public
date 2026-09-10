@@ -615,7 +615,7 @@ public sealed class EndpointExtensionsTests
         Assert.Equal(5m, breakdown.GetProperty("AJ Bell - SIPP (undeployed)").GetDecimal());
     }
 
-    [Fact]
+    [Fact(Skip = "Hourly aggregation retired")]
     public async Task Aggregate_one_hour_consolidates_updates_carries_forward_and_excludes_previous_and_future_observations()
     {
         var now = Utc(2026, 6, 15, 13, 37);
@@ -648,6 +648,25 @@ public sealed class EndpointExtensionsTests
     }
 
     [Fact]
+    public async Task Hourly_and_unknown_periods_are_rejected()
+    {
+        await using var host = await ForecastHost.CreateAsync(
+            [InvestmentAt("Fund", 100m, 80m, Utc(2026, 6, 15, 12, 0))],
+            Utc(2026, 6, 15, 13, 0));
+
+        var aggregateError = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => host.GetAggregateAsync("investments", "1H"));
+        var dashboardError = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => host.GetDashboardAsync("1H"));
+        var historyError = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => host.GetHistoryAsync("banana"));
+
+        Assert.StartsWith("400:", aggregateError.Message);
+        Assert.StartsWith("400:", dashboardError.Message);
+        Assert.StartsWith("400:", historyError.Message);
+    }
+
+    [Fact(Skip = "Hourly aggregation retired")]
     public async Task Aggregate_one_hour_omits_leading_hours_until_a_current_day_value_is_known()
     {
         await using var host = await ForecastHost.CreateAsync(
@@ -667,7 +686,7 @@ public sealed class EndpointExtensionsTests
         });
     }
 
-    [Fact]
+    [Fact(Skip = "Hourly aggregation retired")]
     public async Task Aggregate_one_hour_uses_the_requested_timezone_for_local_day_boundaries()
     {
         await using var host = await ForecastHost.CreateAsync(
@@ -685,7 +704,7 @@ public sealed class EndpointExtensionsTests
         Assert.DoesNotContain(data, point => ParseBucketStart(point).Date != new DateTime(2026, 3, 9));
     }
 
-    [Fact]
+    [Fact(Skip = "Hourly aggregation retired")]
     public async Task Aggregate_one_hour_respects_spring_forward_and_fallback_intervals()
     {
         await using var springHost = await ForecastHost.CreateAsync(
@@ -744,7 +763,7 @@ public sealed class EndpointExtensionsTests
         Assert.True(data[1].GetProperty("HasObservation").GetBoolean());
     }
 
-    [Fact]
+    [Fact(Skip = "Hourly aggregation retired")]
     public async Task Aggregate_daily_and_hourly_ignore_future_same_day_observations_consistently()
     {
         var now = Utc(2026, 6, 15, 13, 0);

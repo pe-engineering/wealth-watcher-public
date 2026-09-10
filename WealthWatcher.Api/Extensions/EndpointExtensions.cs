@@ -441,7 +441,6 @@ public static class EndpointExtensions
                         cache,
                         readModel,
                         "MAX",
-                        null,
                         historicalThrough,
                         factoryCancellationToken);
                     return BuildCalendarResponse(selectedYear, selectedMonth, today, aggregates);
@@ -456,92 +455,71 @@ public static class EndpointExtensions
             var current = await readModel.GetAggregatesAsync(
                 "1D",
                 null,
-                null,
                 cancellationToken);
             return Results.Ok(MergeCurrentCalendar(historical, current, today));
         });
 
         app.MapGet("/api/history", async (
             string? period,
-            string? timeZone,
             [FromServices] WealthReadModelService readModel,
             [FromServices] IApplicationCache cache,
             [FromServices] TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
             var selectedPeriod = string.IsNullOrWhiteSpace(period) ? "1M" : period.Trim();
-            var timeZoneError = ValidateTimeZone(selectedPeriod, timeZone);
-            if (timeZoneError is not null)
-                return Results.BadRequest(new { Error = timeZoneError });
+            if (!IsSupportedPeriod(selectedPeriod))
+                return UnsupportedPeriod(selectedPeriod);
 
             var today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
             var historicalThrough = today.AddDays(-1);
-            var isOneHour = selectedPeriod.Equals("1H", StringComparison.OrdinalIgnoreCase);
-            var historical = isOneHour
-                ? await readModel.GetAggregatesAsync(selectedPeriod, timeZone, null, cancellationToken)
-                : await GetHistoricalAggregatesAsync(
-                    cache,
-                    readModel,
-                    selectedPeriod,
-                    null,
-                    historicalThrough,
-                    cancellationToken);
-            var aggregates = isOneHour
-                ? historical
-                : MergeCurrentAggregates(
-                    historical,
-                    await readModel.GetAggregatesAsync("1D", null, null, cancellationToken),
-                    today);
+            var historical = await GetHistoricalAggregatesAsync(
+                cache,
+                readModel,
+                selectedPeriod,
+                historicalThrough,
+                cancellationToken);
+            var aggregates = MergeCurrentAggregates(
+                historical,
+                await readModel.GetAggregatesAsync("1D", null, cancellationToken),
+                today);
 
             return Results.Ok(BuildHistoryResponse(selectedPeriod, aggregates));
         });
 
         app.MapGet("/api/dashboard", async (
             string? period,
-            string? timeZone,
             [FromServices] WealthReadModelService readModel,
             [FromServices] IApplicationCache cache,
             [FromServices] TimeProvider timeProvider,
             CancellationToken cancellationToken) =>
         {
             var selectedPeriod = string.IsNullOrWhiteSpace(period) ? "1M" : period.Trim();
-            var timeZoneError = ValidateTimeZone(selectedPeriod, timeZone);
-            if (timeZoneError is not null)
-                return Results.BadRequest(new { Error = timeZoneError });
+            if (!IsSupportedPeriod(selectedPeriod))
+                return UnsupportedPeriod(selectedPeriod);
 
             var today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
             var historicalThrough = today.AddDays(-1);
-            var isOneHour = selectedPeriod.Equals("1H", StringComparison.OrdinalIgnoreCase);
             var current = await readModel.GetAggregatesAsync(
-                isOneHour ? selectedPeriod : "1D",
-                isOneHour ? timeZone : null,
+                "1D",
                 null,
                 cancellationToken);
-            var historical = isOneHour
-                ? current
-                : await GetHistoricalAggregatesAsync(
-                    cache,
-                    readModel,
-                    selectedPeriod,
-                    null,
-                    historicalThrough,
-                    cancellationToken);
-            var aggregates = isOneHour
-                ? historical
-                : MergeCurrentAggregates(historical, current, today);
+            var historical = await GetHistoricalAggregatesAsync(
+                cache,
+                readModel,
+                selectedPeriod,
+                historicalThrough,
+                cancellationToken);
+            var aggregates = MergeCurrentAggregates(historical, current, today);
 
             var ytdHistorical = await GetHistoricalAggregatesAsync(
                 cache,
                 readModel,
                 "YTD",
-                null,
                 historicalThrough,
                 cancellationToken);
             var ytd = MergeCurrentAggregates(
                 ytdHistorical,
-                isOneHour
-                    ? ProjectHourlyCurrentDay(current, today)
-                    : current,
+                current,
                 today);
 
             return Results.Ok(BuildDashboardResponse(selectedPeriod, aggregates, ytd, today));
@@ -559,6 +537,9 @@ public static class EndpointExtensions
         {
             var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
             var todayUtc = DateOnly.FromDateTime(nowUtc);
+            var selectedPeriod = string.IsNullOrWhiteSpace(period) ? "1M" : period.Trim();
+            if (!IsSupportedPeriod(selectedPeriod))
+                return UnsupportedPeriod(selectedPeriod);
             if (period?.Equals("1H", StringComparison.OrdinalIgnoreCase) == true)
             {
                 if (asOfDate.HasValue)
@@ -1174,42 +1155,29 @@ public static class EndpointExtensions
         return app;
     }
 
-    private static string? ValidateTimeZone(string period, string? timeZone)
-    {
-        if (!period.Equals("1H", StringComparison.OrdinalIgnoreCase))
-            return null;
-        if (string.IsNullOrWhiteSpace(timeZone))
-            return "A timeZone query parameter is required for 1H aggregation.";
+    private static readonly string[] SupportedPeriods = ["1D", "1W", "1M", "3M", "1Y", "YTD", "MAX"];
 
-        try
-        {
-            TimeZoneInfo.FindSystemTimeZoneById(timeZone);
-            return null;
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            return "The supplied timeZone is not supported.";
-        }
-        catch (InvalidTimeZoneException)
-        {
-            return "The supplied timeZone is invalid.";
-        }
-    }
+    private static bool IsSupportedPeriod(string period) =>
+        SupportedPeriods.Contains(period, StringComparer.OrdinalIgnoreCase);
+
+    private static IResult UnsupportedPeriod(string period) => Results.BadRequest(new
+    {
+        Error = $"The period '{period}' is not supported.",
+        SupportedPeriods
+    });
 
     private static Task<IReadOnlyList<WealthCategoryAggregate>> GetHistoricalAggregatesAsync(
         IApplicationCache cache,
         WealthReadModelService readModel,
         string? period,
-        string? timeZone,
         DateOnly asOfDate,
         CancellationToken cancellationToken)
     {
-        var cacheKey = CacheKeys.HistoricalAggregates(period, timeZone, asOfDate);
+        var cacheKey = CacheKeys.HistoricalAggregates(period, null, asOfDate);
         return cache.GetOrCreateAsync(
             cacheKey,
             factoryCancellationToken => readModel.GetAggregatesAsync(
                 period,
-                timeZone,
                 asOfDate,
                 factoryCancellationToken),
             CacheDurations.HistoricalAggregate,
@@ -1347,53 +1315,6 @@ public static class EndpointExtensions
         return historicalCategories
             .OrderBy(aggregate => aggregate.DisplayOrder)
             .ThenBy(aggregate => aggregate.Label)
-            .ToList();
-    }
-
-    private static IReadOnlyList<WealthCategoryAggregate> ProjectHourlyCurrentDay(
-        IReadOnlyList<WealthCategoryAggregate> hourly,
-        DateOnly today)
-    {
-        var todayText = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        return hourly
-            .Select(aggregate =>
-            {
-                var currentPoint = aggregate.Response.Data.LastOrDefault();
-                if (currentPoint is null)
-                    return null;
-
-                return new WealthCategoryAggregate
-                {
-                    Category = aggregate.Category,
-                    Label = aggregate.Label,
-                    Color = aggregate.Color,
-                    DisplayOrder = aggregate.DisplayOrder,
-                    AssetGroupId = aggregate.AssetGroupId,
-                    AssetGroupCode = aggregate.AssetGroupCode,
-                    ClassificationValueId = aggregate.ClassificationValueId,
-                    Response = new WealthAggregateResponse
-                    {
-                        Data =
-                        [
-                            new WealthAggregatePoint
-                            {
-                                Time = todayText,
-                                Value = currentPoint.Value,
-                                Invested = currentPoint.Invested,
-                                HasObservation = currentPoint.HasObservation,
-                                Breakdown = currentPoint.Breakdown
-                            }
-                        ],
-                        LastSyncDateTime = aggregate.Response.LastSyncDateTime,
-                        IsManual = aggregate.Response.IsManual,
-                        LatestBreakdown = aggregate.Response.LatestBreakdown,
-                        PropertyDetails = aggregate.Response.PropertyDetails,
-                        InvestmentDetails = aggregate.Response.InvestmentDetails
-                    }
-                };
-            })
-            .Where(aggregate => aggregate is not null)
-            .Cast<WealthCategoryAggregate>()
             .ToList();
     }
 

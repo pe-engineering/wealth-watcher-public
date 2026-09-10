@@ -118,18 +118,6 @@ export const store = {
         this.state.fireStatusForecast = { key: '', status: 'idle', target: 0, data: null, date: null };
     },
 
-    clearHourlyAggregateCache() {
-        this.cacheGeneration += 1;
-        this.apiInflight = {};
-        Object.keys(this.apiCache).forEach(key => {
-            if (key.includes('/aggregate?period=1H')) {
-                delete this.apiCache[key];
-                delete this.apiCacheMeta[key];
-                delete this.apiCacheTags[key];
-            }
-        });
-    },
-
     invalidateCacheTag(tag) {
         this.cacheGeneration += 1;
         this.apiInflight = {};

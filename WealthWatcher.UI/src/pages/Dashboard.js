@@ -6,7 +6,7 @@ import { requestConfirmation, requestNotification } from '../components/Confirma
 import { showToast } from '../components/Toast.js';
 import { setPageLoading } from '../components/PageLoading.js';
 import { PAGE_STATUS, setPageStatus } from '../components/PageState.js';
-import { bindPeriodPicker } from '../components/PeriodPicker.js';
+import { bindPeriodPicker, normalizePeriod } from '../components/PeriodPicker.js';
 import { escapeHtml, safeCssColor } from '../utils/html.js';
 import {
     buildFireStatusViewModel,
@@ -28,9 +28,6 @@ let dashboardReloadPending = false;
 let dashboardHasData = false;
 let dashboardPageState = PAGE_STATUS.LOADING;
 let dashboardPageError = null;
-let hourlyRefreshInterval = null;
-let hourlyBoundaryTimeout = null;
-let hourlyRefreshLifecycleSetup = false;
 let dashboardActionsSetup = false;
 let collapsedAssetGroupKeys = new Set();
 let refreshDashboardData = async () => {};
@@ -200,18 +197,14 @@ async function readApiError(response, fallback) {
 }
 
 export function setupPeriodListeners() {
+    store.state.currentPeriod = normalizePeriod(store.state.currentPeriod);
     bindPeriodPicker('period-picker', {
-        selectedPeriod: store.state.currentPeriod || '1M',
+        selectedPeriod: store.state.currentPeriod,
         onChange: async period => {
-            store.state.currentPeriod = period;
+            store.state.currentPeriod = normalizePeriod(period);
             store.state.isDashboardLoaded = false;
-            if (store.state.currentPeriod === '1H') {
-                updateHourlyRefreshLifecycle({ immediate: true });
-            } else {
-                await loadDashboard({ force: true });
-                store.state.isDashboardLoaded = true;
-                updateHourlyRefreshLifecycle();
-            }
+            await loadDashboard({ force: true });
+            store.state.isDashboardLoaded = true;
         }
     });
 }
@@ -229,13 +222,8 @@ export async function forceSync() {
         if (isDemoActionDisabled(res)) return;
         if (res.ok) {
             store.clearCache();
-            if (store.state.currentPeriod === '1H') {
-                await refreshHourlyDashboard();
-                updateHourlyRefreshLifecycle();
-            } else {
-                await loadDashboard();
-                store.state.isDashboardLoaded = true;
-            }
+            await loadDashboard();
+            store.state.isDashboardLoaded = true;
             showToast({
                 title: 'Sync complete',
                 message: 'The dashboard has been refreshed with the latest data.',
@@ -306,17 +294,14 @@ export function loadDashboard({ force = false } = {}) {
 
 async function loadDashboardInternal() {
     const currentFireStatusRequestId = ++fireStatusRequestId;
-    const selectedPeriod = store.state.currentPeriod;
-    const timeZone = selectedPeriod === '1H'
-        ? Intl.DateTimeFormat().resolvedOptions().timeZone
-        : null;
+    const selectedPeriod = normalizePeriod(store.state.currentPeriod);
+    store.state.currentPeriod = selectedPeriod;
 
     destroyDashboardCharts();
     store.state.categories = {};
     const assetGroupDescriptors = getAssetGroupDescriptors();
 
-    const dashboardUrl = `${API_BASE_URL}/dashboard?period=${encodeURIComponent(selectedPeriod)}${
-        timeZone ? `&timeZone=${encodeURIComponent(timeZone)}` : ''}`;
+    const dashboardUrl = `${API_BASE_URL}/dashboard?period=${encodeURIComponent(selectedPeriod)}`;
     const dashboardResponse = await requestDashboardData(dashboardUrl);
     const results = (dashboardResponse?.Categories || []).map(category => ({
         cat: {
@@ -445,7 +430,6 @@ async function loadDashboardInternal() {
                 part.propertyDetails,
                 part.investmentDetails,
                 selectedPeriod,
-                timeZone,
                 assetGroupTargets.get(partAssetGroup.key),
                 groupParts.length > 1 ? `${cat.Id}-${partAssetGroup.key}` : cat.Id);
         });
@@ -600,7 +584,7 @@ function createDashboardEmptyState(view) {
                     <span class="presentation-preview-status">1M example</span>
                 </div>
                 <div class="dashboard-preview-toolbar" aria-hidden="true">
-                    <div class="dashboard-preview-periods"><span>1H</span><span>1D</span><span>1W</span><span class="active">1M</span><span>3M</span><span>1Y</span><span>MAX</span></div>
+                    <div class="dashboard-preview-periods"><span>1D</span><span>1W</span><span class="active">1M</span><span>3M</span><span>1Y</span><span>MAX</span></div>
                     <div class="dashboard-preview-actions"><i>↻</i><i>◌</i></div>
                 </div>
                 <div class="dashboard-preview-total">
@@ -1083,81 +1067,6 @@ function getRecordValue(record, propertyName) {
     return record[propertyName];
 }
 
-function isHourlyRefreshEligible() {
-    const isDashboardRoute = !window.location.hash || window.location.hash === '#dashboard';
-    return store.state.currentPeriod === '1H'
-        && isDashboardRoute
-        && document.visibilityState !== 'hidden';
-}
-
-function stopHourlyRefreshTimers() {
-    if (hourlyRefreshInterval !== null) {
-        clearInterval(hourlyRefreshInterval);
-        hourlyRefreshInterval = null;
-    }
-    if (hourlyBoundaryTimeout !== null) {
-        clearTimeout(hourlyBoundaryTimeout);
-        hourlyBoundaryTimeout = null;
-    }
-}
-
-function scheduleHourlyBoundaryRefresh() {
-    if (!isHourlyRefreshEligible()) return;
-
-    if (hourlyBoundaryTimeout !== null) {
-        clearTimeout(hourlyBoundaryTimeout);
-    }
-
-    const now = new Date();
-    const millisecondsUntilNextHour = (60 - now.getMinutes()) * 60 * 1000
-        - now.getSeconds() * 1000
-        - now.getMilliseconds();
-    hourlyBoundaryTimeout = setTimeout(async () => {
-        hourlyBoundaryTimeout = null;
-        if (isHourlyRefreshEligible()) {
-            await refreshHourlyDashboard();
-            scheduleHourlyBoundaryRefresh();
-        }
-    }, millisecondsUntilNextHour);
-    hourlyBoundaryTimeout?.unref?.();
-}
-
-export async function refreshHourlyDashboard() {
-    store.clearHourlyAggregateCache();
-    await loadDashboard({ force: true });
-    store.state.isDashboardLoaded = true;
-}
-
-export function updateHourlyRefreshLifecycle({ immediate = false } = {}) {
-    if (!isHourlyRefreshEligible()) {
-        stopHourlyRefreshTimers();
-        return;
-    }
-
-    if (hourlyRefreshInterval === null) {
-        hourlyRefreshInterval = setInterval(() => {
-            if (isHourlyRefreshEligible()) {
-                refreshHourlyDashboard();
-            }
-        }, 60 * 1000);
-        hourlyRefreshInterval?.unref?.();
-    }
-    scheduleHourlyBoundaryRefresh();
-
-    if (immediate) {
-        refreshHourlyDashboard();
-    }
-}
-
-export function setupHourlyRefreshLifecycle() {
-    if (hourlyRefreshLifecycleSetup) return;
-    hourlyRefreshLifecycleSetup = true;
-    document.addEventListener('visibilitychange', () => {
-        updateHourlyRefreshLifecycle({ immediate: document.visibilityState !== 'hidden' });
-    });
-    updateHourlyRefreshLifecycle();
-}
-
 function updateGlobalHeader(total, past, contributors) {
     document.getElementById('global-total').innerText = formatter.format(total);
     const diff = total - past;
@@ -1317,7 +1226,7 @@ function renderPropertyPanel(propertyDetails) {
     return html;
 }
 
-function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSync, isManual, propertyDetails, investmentDetails, selectedPeriod, timeZone, container, renderKey = cat.Id) {
+function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSync, isManual, propertyDetails, investmentDetails, selectedPeriod, container, renderKey = cat.Id) {
     if (!container) return;
     const chartKey = String(renderKey || cat.Id).replace(/[^a-zA-Z0-9_-]/g, '-');
     
@@ -1490,12 +1399,6 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
                     tooltip: { 
                         enabled: true, backgroundColor: '#1e293b', titleColor: '#94a3b8', bodyColor: '#f8fafc', displayColors: false,
                         callbacks: {
-                            ...(selectedPeriod === '1H' ? {
-                                title: function(context) {
-                                    const dataPoint = history[context[0]?.dataIndex];
-                                    return formatHourlyInterval(dataPoint?.Time, timeZone);
-                                }
-                            } : {}),
                             label: function(context) {
                                 if (window.isObfuscated) return 'Total: £***';
                                 const dataPoint = history[context.dataIndex];
@@ -1597,29 +1500,6 @@ function renderSparkline(values, color, label) {
         return `${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(' ');
     return `<svg class="breakdown-sparkline" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(label)}" preserveAspectRatio="none"><polyline points="${points}" fill="none" stroke="${safeCssColor(color, '#06b6d4')}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>`;
-}
-
-function formatHourlyInterval(bucketStart, timeZone) {
-    const start = new Date(bucketStart);
-    if (Number.isNaN(start.getTime())) return bucketStart || '';
-
-    const formatOptions = {
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-        timeZone
-    };
-    const timeFormatter = new Intl.DateTimeFormat(undefined, formatOptions);
-    const startLabel = timeFormatter.format(start);
-    const endLabel = timeFormatter.format(new Date(start.getTime() + 60 * 60 * 1000));
-
-    if (startLabel !== endLabel) return `${startLabel}\u2013${endLabel}`;
-
-    const zoneFormatter = new Intl.DateTimeFormat(undefined, {
-        ...formatOptions,
-        timeZoneName: 'short'
-    });
-    return `${zoneFormatter.format(start)}\u2013${zoneFormatter.format(new Date(start.getTime() + 60 * 60 * 1000))}`;
 }
 
 function renderXrayChart() {
