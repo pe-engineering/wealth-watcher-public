@@ -662,10 +662,8 @@ public static class EndpointExtensions
             {
                 var providerCode = entry.SourceLink?.ExternalValue?.IntegrationAccount?.IntegrationConnection
                     ?.IntegrationProvider?.Code;
-                return (entry.SourceLink?.SourceKind == AssetValueEntrySourceKind.Integration &&
-                        (string.IsNullOrWhiteSpace(providerCode) || configuredProviderCodes.Contains(providerCode))) ||
-                       (!string.IsNullOrWhiteSpace(entry.ProviderKey) &&
-                        configuredProviderCodes.Contains(entry.ProviderKey));
+                return entry.SourceLink?.SourceKind == AssetValueEntrySourceKind.Integration &&
+                       (string.IsNullOrWhiteSpace(providerCode) || configuredProviderCodes.Contains(providerCode));
             }
 
             bool IsUndeployedEntry(AssetValueEntry entry) =>

@@ -188,10 +188,8 @@ public sealed class WealthReadModelService(
         {
             var providerCode = entry.SourceLink?.ExternalValue?.IntegrationAccount?.IntegrationConnection
                 ?.IntegrationProvider?.Code;
-            return (entry.SourceLink?.SourceKind == AssetValueEntrySourceKind.Integration &&
-                    (string.IsNullOrWhiteSpace(providerCode) || configuredProviderCodes.Contains(providerCode))) ||
-                   (!string.IsNullOrWhiteSpace(entry.ProviderKey) &&
-                    configuredProviderCodes.Contains(entry.ProviderKey));
+            return entry.SourceLink?.SourceKind == AssetValueEntrySourceKind.Integration &&
+                   (string.IsNullOrWhiteSpace(providerCode) || configuredProviderCodes.Contains(providerCode));
         }
 
         string EntryIdentity(AssetValueEntry entry)
