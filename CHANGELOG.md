@@ -2,7 +2,15 @@
 
 All notable changes to this project will be documented here.
 
-The latest stable release is `v0.11.0`. Changes that have not yet been released are grouped under `Unreleased`.
+The latest stable release is `v0.12.0`. Changes that have not yet been released are grouped under `Unreleased`.
+
+## 0.12.0 - 2026-09-10
+
+- Replace the dashboard range controls with Day, Week, Month, 3 Months, Year To Date, and MAX; use available hourly observations for Day and daily aggregation for longer ranges.
+- Expand primary asset-card charts across desktop cards and select representative observations without visually joining carried-forward values across longer buckets.
+- Chart property value and linked equity as separate lines and surface mortgage-driven equity changes as first-class dashboard growth contributors.
+- Make the Dashboard FIRE status snapshot collapsible, defaulting to compact on mobile while preserving the selected state during dashboard refreshes.
+- Preserve existing databases and configuration without a migration, with expanded API, UI, responsive, and browser-demo regression coverage.
 
 ## 0.11.0 - 2026-09-09
 
