@@ -170,10 +170,31 @@ const {
     forceSync,
     loadDashboard,
     setupPeriodListeners,
+    aggregateAssetCardHistory,
     getDashboardAssetName,
     getActiveUnclassifiedAssetCount,
     renderUnclassifiedAssetBanner
 } = await import('./Dashboard.js');
+
+test('asset-card chart aggregation uses range-aware closing buckets and prefers observations', () => {
+    const history = Array.from({ length: 15 }, (_, index) => ({
+        Time: `2026-01-${String(index + 1).padStart(2, '0')}`,
+        Value: 100 + index,
+        HasObservation: index === 5
+    }));
+
+    assert.equal(aggregateAssetCardHistory(history, '1M').length, 15);
+
+    const quarterly = aggregateAssetCardHistory(history, '3M');
+    assert.equal(quarterly.length, 8);
+    assert.equal(quarterly[2].Time, '2026-01-06');
+    assert.equal(quarterly.at(-1).Time, '2026-01-15');
+
+    const yearly = aggregateAssetCardHistory(history, '1Y');
+    assert.equal(yearly.length, 3);
+    assert.equal(yearly[0].Time, '2026-01-06');
+    assert.equal(yearly.at(-1).Time, '2026-01-15');
+});
 
 test('Dashboard shows an accessible Unclassified banner only above the threshold', () => {
     const originalAssets = store.state.assets;
@@ -992,8 +1013,8 @@ test('Dashboard asset cards place the type-specific Add action in the header wit
         const childHtml = elements.get('liquid-grid').innerHTML;
         assert.ok(childHtml.includes('Add Pension'));
         const childHeaderStart = childHtml.indexOf('<div class="card-header dashboard-card-header');
-        const childValueStart = childHtml.indexOf('<div class="card-value', childHeaderStart);
-        const childHeaderHtml = childHtml.slice(childHeaderStart, childValueStart);
+        const childOverviewStart = childHtml.indexOf('<div class="card-overview', childHeaderStart);
+        const childHeaderHtml = childHtml.slice(childHeaderStart, childOverviewStart);
         assert.match(childHeaderHtml, /data-dashboard-card-actions[\s\S]*data-dashboard-action="entry"[\s\S]*aria-label="Add Pension"/);
         assert.doesNotMatch(childHeaderHtml, /data-dashboard-action="archive"/);
         assert.doesNotMatch(childHeaderHtml, /asset-archive-action/);
@@ -1035,8 +1056,8 @@ test('Dashboard asset cards place the type-specific Add action in the header wit
         const emptyHtml = elements.get('liquid-grid').innerHTML;
         assert.ok(emptyHtml.includes('Add Saving'));
         const emptyHeaderStart = emptyHtml.indexOf('<div class="card-header dashboard-card-header');
-        const emptyValueStart = emptyHtml.indexOf('<div class="card-value', emptyHeaderStart);
-        const emptyHeaderHtml = emptyHtml.slice(emptyHeaderStart, emptyValueStart);
+        const emptyOverviewStart = emptyHtml.indexOf('<div class="card-overview', emptyHeaderStart);
+        const emptyHeaderHtml = emptyHtml.slice(emptyHeaderStart, emptyOverviewStart);
         assert.match(emptyHeaderHtml, /data-dashboard-card-actions[\s\S]*data-dashboard-action="entry"[\s\S]*aria-label="Add Saving"/);
         assert.doesNotMatch(emptyHeaderHtml, /data-dashboard-action="archive"/);
         assert.doesNotMatch(emptyHeaderHtml, /asset-archive-action/);
@@ -1044,7 +1065,7 @@ test('Dashboard asset cards place the type-specific Add action in the header wit
         assert.doesNotMatch(emptyHtml, /card-archive-btn/);
         assert.match(emptyHtml, /class="card-header dashboard-card-header"/);
         assert.match(emptyHtml, /data-dashboard-card-header/);
-        assert.match(emptyHtml, /grid-template-areas: 'heading actions' 'chart chart'/);
+        assert.match(emptyHtml, /grid-template-areas: 'heading actions'/);
         assert.ok(emptyHtml.indexOf('data-dashboard-card-actions') < emptyHtml.indexOf('mini-chart-container'));
         assert.match(emptyHtml, /aria-label="Add Saving"/);
     } finally {

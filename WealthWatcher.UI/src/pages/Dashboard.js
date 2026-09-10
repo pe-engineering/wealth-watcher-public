@@ -1247,6 +1247,7 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
     const breakdownEntries = breakdown && typeof breakdown === 'object' ? breakdown : {};
     const propertyEntries = getPropertyEntries(propertyDetails);
     const showSparklines = store.state.generalSettings?.showSparklines !== false;
+    const chartHistory = aggregateAssetCardHistory(history, selectedPeriod);
 
     let breakdownHtml = '<div class="breakdown-list">';
     
@@ -1342,7 +1343,7 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
         <div class="card-header-actions dashboard-card-actions" data-dashboard-card-actions>
             <button type="button" class="property-action-btn asset-entry-action card-entry-btn" data-dashboard-action="entry" data-category-id="${escapeHtml(cat.Id)}" data-entry-name="" data-entry-value="" aria-label="${escapeHtml(addLabel)}" title="${escapeHtml(addLabel)}">${escapeHtml(addLabel)}</button>
         </div>`;
-    const headerLayout = `grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'heading actions'${showSparklines ? " 'chart chart'" : ''};`;
+    const headerLayout = "grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'heading actions';";
 
     const cardHtml = `
         <div class="card glass-panel" data-cat="${escapeHtml(cat.Id)}">
@@ -1355,9 +1356,11 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
                     <div class="card-delta ${safeDelta < 0 ? 'neg' : ''} obfuscate-val">${deltaSign}${formatter.format(safeDelta)} (${deltaPercentage.toFixed(2)}%)</div>
                 </div>
                 ${cardActions}
+            </div>
+            <div class="card-overview${showSparklines ? '' : ' no-chart'}">
+                <div class="card-value obfuscate-val">${formatter.format(currentVal)}</div>
                 ${showSparklines ? `<div class="mini-chart-container" aria-label="${escapeHtml(displayLabel)} trend"><canvas id="chart-${escapeHtml(chartKey)}" role="img" aria-label="${escapeHtml(displayLabel)} trend"></canvas></div>` : ''}
             </div>
-            <div class="card-value obfuscate-val">${formatter.format(currentVal)}</div>
             ${showSparklines ? `<details class="chart-data-alternative" data-dashboard-chart-data><summary>View ${escapeHtml(displayLabel)} trend data</summary></details>` : ''}
             ${breakdownHtml}
         </div>
@@ -1368,7 +1371,7 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
     renderAccessibleChartData(renderedCard?.querySelector?.('[data-dashboard-chart-data]'), {
         summary: `View ${displayLabel} trend data`,
         headers: [{ key: 'date', label: 'Date' }, { key: 'value', label: 'Value' }],
-        rows: (Array.isArray(history) ? history : []).map(point => ({
+        rows: chartHistory.map(point => ({
             date: point?.Time,
             value: Number(point?.Value ?? 0)
         })),
@@ -1384,9 +1387,9 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
         charts[chartKey] = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: history.map(h => h.Time),
+                labels: chartHistory.map(h => h.Time),
                 datasets: [{
-                    data: history.map(h => h.Value),
+                    data: chartHistory.map(h => h.Value),
                     borderColor: cardColor, borderWidth: 2, backgroundColor: 'transparent',
                     pointRadius: 0, pointHoverRadius: 4, tension: 0.4
                 }]
@@ -1401,7 +1404,7 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
                         callbacks: {
                             label: function(context) {
                                 if (window.isObfuscated) return 'Total: £***';
-                                const dataPoint = history[context.dataIndex];
+                                const dataPoint = chartHistory[context.dataIndex];
                                 let lines = [`Total: ${formatter.format(context.raw)}`];
                                 if (dataPoint && dataPoint.Breakdown) {
                                     lines.push('------------------------');
@@ -1418,6 +1421,52 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
             }
         });
     }, 0);
+}
+
+const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000;
+
+/**
+ * Keeps dashboard asset charts readable at every range without changing the
+ * denser History-page timeline. Short ranges retain daily closes; longer
+ * ranges use progressively wider closing buckets, preferring a real provider
+ * or manual observation over a carried-forward point within each bucket.
+ */
+export function aggregateAssetCardHistory(history, period = '1M') {
+    const points = (Array.isArray(history) ? history : [])
+        .map((point, index) => ({ point, index, timestamp: Date.parse(point?.Time) }))
+        .filter(item => Number.isFinite(item.timestamp) && Number.isFinite(Number(item.point?.Value)))
+        .sort((left, right) => left.timestamp - right.timestamp || left.index - right.index);
+
+    if (points.length <= 2) return points.map(item => item.point);
+
+    const normalizedPeriod = normalizePeriod(period);
+    const spanDays = Math.max(1, Math.ceil((points.at(-1).timestamp - points[0].timestamp) / DAY_IN_MILLISECONDS));
+    const bucketDays = normalizedPeriod === '3M'
+        ? 2
+        : normalizedPeriod === '1Y'
+            ? 7
+            : normalizedPeriod === 'MAX'
+                ? Math.max(1, Math.ceil(spanDays / 90))
+                : 1;
+
+    if (bucketDays === 1) return points.map(item => item.point);
+
+    const origin = points[0].timestamp;
+    const buckets = new Map();
+    for (const item of points) {
+        const bucket = Math.floor((item.timestamp - origin) / (bucketDays * DAY_IN_MILLISECONDS));
+        const current = buckets.get(bucket);
+        if (!current || item.point?.HasObservation === true || current.point?.HasObservation !== true) {
+            buckets.set(bucket, item);
+        }
+    }
+
+    const aggregated = [...buckets.values()]
+        .sort((left, right) => left.timestamp - right.timestamp)
+        .map(item => item.point);
+    const lastPoint = points.at(-1).point;
+    if (aggregated.at(-1) !== lastPoint) aggregated.push(lastPoint);
+    return aggregated;
 }
 
 export function getDashboardAssetName(category) {
