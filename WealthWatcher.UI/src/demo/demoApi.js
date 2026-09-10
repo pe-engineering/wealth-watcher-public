@@ -1256,6 +1256,11 @@ function buildCategoryHistory(category, period) {
             if (category.Id === 'property') {
                 point.GrossValue = Number(currentEntries.reduce((total, entry) => total + numberValue(entry.Value), 0).toFixed(2));
                 point.Equity = point.Value;
+                point.PropertyValues = currentEntries.reduce((values, entry) => {
+                    const name = entry.Name || entry.Id;
+                    values[name] = numberValue(values[name]) + numberValue(entry.Value);
+                    return values;
+                }, {});
             }
             data.push(point);
         }

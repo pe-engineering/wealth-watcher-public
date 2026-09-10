@@ -281,6 +281,12 @@ public sealed class WealthReadModelService(
             .GroupBy(pair => runningBalanceNames.TryGetValue(pair.Key, out var name) ? name : pair.Key)
             .ToDictionary(group => group.Key, group => group.Sum(pair => pair.Value));
 
+        Dictionary<string, decimal>? BuildPropertyValues() => !isPropertyCategory
+            ? null
+            : runningPropertyValues
+                .GroupBy(pair => runningBalanceNames.TryGetValue(pair.Key, out var name) ? name : pair.Key)
+                .ToDictionary(group => group.Key, group => group.Sum(pair => pair.Value));
+
         var cutoff = ResolveCutoff(period, effectiveNowUtc, allEntries);
         var resultData = new List<WealthAggregatePoint>();
         var cutoffDate = DateOnly.FromDateTime(cutoff);
@@ -308,6 +314,7 @@ public sealed class WealthReadModelService(
                 Value = runningBalances.Values.Sum(),
                 GrossValue = isPropertyCategory ? runningPropertyValues.Values.Sum() : null,
                 Equity = isPropertyCategory ? runningBalances.Values.Sum() : null,
+                PropertyValues = BuildPropertyValues(),
                 Invested = runningInvested.Values.Sum(),
                 HasObservation = hasObservation,
                 Breakdown = BuildBreakdown()

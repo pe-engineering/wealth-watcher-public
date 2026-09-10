@@ -400,7 +400,12 @@ async function loadDashboardInternal() {
 
         const delta = currentVal - pastVal;
         const deltaInvested = currentInvested - pastInvested;
-        contributors.push({ name: cat.Label, delta: delta, deltaInvested: deltaInvested, currentVal: currentVal, color: cat.Color });
+        const insightChildren = normalizeCode(cat.Id) === 'property'
+            ? buildPropertyInsightContributors(history.at(-1), firstValidDate
+                ? history.find(point => point.Time === firstValidDate) || history[0]
+                : history[0], cat.Color)
+            : [];
+        contributors.push({ name: cat.Label, delta: delta, deltaInvested: deltaInvested, currentVal: currentVal, color: cat.Color, insightChildren });
 
         const groupParts = getCategoryGroupParts(cat, data, assetGroupDescriptors);
         groupParts.forEach((part, index) => {
@@ -1080,8 +1085,10 @@ function updateGlobalHeader(total, past, contributors) {
     if (Math.abs(diff) < 1) {
         explainerEl.innerHTML = '';
     } else {
-        const positives = contributors.filter(c => c.delta > 0).sort((a,b) => b.delta - a.delta);
-        const negatives = contributors.filter(c => c.delta < 0).sort((a,b) => a.delta - b.delta);
+        const insightContributors = contributors.flatMap(contributor =>
+            contributor.insightChildren?.length ? contributor.insightChildren : [contributor]);
+        const positives = insightContributors.filter(c => c.delta > 0).sort((a,b) => b.delta - a.delta);
+        const negatives = insightContributors.filter(c => c.delta < 0).sort((a,b) => a.delta - b.delta);
         
         const totalPos = positives.reduce((sum, c) => sum + c.delta, 0);
         const totalNeg = negatives.reduce((sum, c) => sum + Math.abs(c.delta), 0);
@@ -1090,7 +1097,9 @@ function updateGlobalHeader(total, past, contributors) {
             const sign = c.delta > 0 ? '+' : '';
             const color = safeCssColor(c.color, '#06b6d4');
             let tooltip = '';
-            if (c.deltaInvested !== 0) {
+            if (c.explanation) {
+                tooltip = ` title="${escapeHtml(c.explanation)}"`;
+            } else if (c.deltaInvested !== 0) {
                 const organicDelta = c.delta - c.deltaInvested;
                 tooltip = ` title="${escapeHtml(`Deposits: ${formatter.format(c.deltaInvested)} | Market: ${organicDelta >= 0 ? '+' : ''}${formatter.format(organicDelta)}`)}"`;
             }
@@ -1146,6 +1155,46 @@ function updateGlobalHeader(total, past, contributors) {
             }
         });
     }
+}
+
+export function buildPropertyInsightContributors(currentPoint, pastPoint, color) {
+    const currentValues = currentPoint?.PropertyValues;
+    const pastValues = pastPoint?.PropertyValues;
+    if (!currentValues || !pastValues) return [];
+
+    const currentEquity = currentPoint?.Breakdown || {};
+    const pastEquity = pastPoint?.Breakdown || {};
+    const names = new Set([
+        ...Object.keys(currentValues),
+        ...Object.keys(pastValues),
+        ...Object.keys(currentEquity),
+        ...Object.keys(pastEquity)
+    ]);
+    const contributors = [];
+    names.forEach(name => {
+        const valueDelta = Number(currentValues[name] || 0) - Number(pastValues[name] || 0);
+        const equityDelta = Number(currentEquity[name] || 0) - Number(pastEquity[name] || 0);
+        const financingDelta = equityDelta - valueDelta;
+        if (Math.abs(valueDelta) >= 0.01) {
+            contributors.push({
+                name: `${name} value`,
+                delta: valueDelta,
+                deltaInvested: 0,
+                color,
+                explanation: 'Change in the property’s gross value.'
+            });
+        }
+        if (Math.abs(financingDelta) >= 0.01) {
+            contributors.push({
+                name: `${name} equity`,
+                delta: financingDelta,
+                deltaInvested: 0,
+                color: '#e2e8f0',
+                explanation: 'Equity gained or released through a change in the linked mortgage balance.'
+            });
+        }
+    });
+    return contributors;
 }
 
 function getPropertyField(property, name, fallback = 0) {
