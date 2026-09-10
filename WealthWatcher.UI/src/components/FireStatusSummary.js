@@ -167,9 +167,14 @@ function renderSetupCard(card, model) {
                 <h4>Set up your FIRE snapshot</h4>
                 <p class="fire-status-card-scope">${escapeHtml(message)} Holistic Net Worth remains separate and includes all tracked categories.</p>
             </div>
-            <a class="action-btn fire-status-card-link" href="${action.href}" aria-controls="fire-settings-pane">${escapeHtml(action.label)}</a>
+            <div class="fire-status-card-actions">
+                <button class="fire-status-collapse-toggle" type="button" aria-expanded="true" aria-controls="fire-status-card-details">Hide details</button>
+                <a class="action-btn fire-status-card-link" href="${action.href}" aria-controls="fire-settings-pane">${escapeHtml(action.label)}</a>
+            </div>
         </div>
-        ${renderMilestoneContext(model.milestone)}`;
+        <div id="fire-status-card-details" class="fire-status-card-details">
+            ${renderMilestoneContext(model.milestone)}
+        </div>`;
 }
 
 function renderMilestoneContext(milestone) {
@@ -220,29 +225,62 @@ function renderReadyCard(card, model) {
                 <h4>Financial independence snapshot</h4>
                 <p class="fire-status-card-scope">Uses selected FIRE assets. Holistic Net Worth is <span class="obfuscate-val">${escapeHtml(formatMoney(model.holisticNetWorth))}</span> and includes all tracked categories.</p>
             </div>
-            <a class="action-btn fire-status-card-link" href="${trackerHref}">${trackerLabel}</a>
-        </div>
-        <div class="fire-status-card-metrics">
-            <div><span>FIRE assets</span><strong class="obfuscate-val">${escapeHtml(formatMoney(fireSummary.investableAssets))}</strong></div>
-            <div><span>FIRE target</span><strong class="obfuscate-val">${escapeHtml(formatMoney(fireSummary.target))}</strong></div>
-            <div><span>Remaining</span><strong class="obfuscate-val">${escapeHtml(formatMoney(fireSummary.gap))}</strong></div>
-            <div><span>Progress</span><strong class="obfuscate-val">${escapeHtml(formatPercent(percentage))}</strong></div>
-        </div>
-        <div class="fire-status-progress-track" role="progressbar" aria-label="Progress toward the FIRE target" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentage}">
-            <span class="fire-status-progress-fill" style="width: ${percentage}%"></span>
-        </div>
-        <div class="fire-status-card-lower">
-            <div class="fire-status-projection">
-                <span>Projected FIRE date</span>
-                <strong class="obfuscate-val">${escapeHtml(projectionLabel)}</strong>
-                <small>${escapeHtml(projectionDescription)}</small>
-            </div>
-            <div class="fire-status-next-action">
-                <span>Next action</span>
-                <a id="fire-status-next-action-link" href="${action.href}">${escapeHtml(action.label)}</a>
+            <div class="fire-status-card-actions">
+                <button class="fire-status-collapse-toggle" type="button" aria-expanded="true" aria-controls="fire-status-card-details">Hide details</button>
+                <a class="action-btn fire-status-card-link" href="${trackerHref}">${trackerLabel}</a>
             </div>
         </div>
-        ${renderMilestoneContext(model.milestone)}`;
+        <div id="fire-status-card-details" class="fire-status-card-details">
+            <div class="fire-status-card-metrics">
+                <div><span>FIRE assets</span><strong class="obfuscate-val">${escapeHtml(formatMoney(fireSummary.investableAssets))}</strong></div>
+                <div><span>FIRE target</span><strong class="obfuscate-val">${escapeHtml(formatMoney(fireSummary.target))}</strong></div>
+                <div><span>Remaining</span><strong class="obfuscate-val">${escapeHtml(formatMoney(fireSummary.gap))}</strong></div>
+                <div><span>Progress</span><strong class="obfuscate-val">${escapeHtml(formatPercent(percentage))}</strong></div>
+            </div>
+            <div class="fire-status-progress-track" role="progressbar" aria-label="Progress toward the FIRE target" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentage}">
+                <span class="fire-status-progress-fill" style="width: ${percentage}%"></span>
+            </div>
+            <div class="fire-status-card-lower">
+                <div class="fire-status-projection">
+                    <span>Projected FIRE date</span>
+                    <strong class="obfuscate-val">${escapeHtml(projectionLabel)}</strong>
+                    <small>${escapeHtml(projectionDescription)}</small>
+                </div>
+                <div class="fire-status-next-action">
+                    <span>Next action</span>
+                    <a id="fire-status-next-action-link" href="${action.href}">${escapeHtml(action.label)}</a>
+                </div>
+            </div>
+            ${renderMilestoneContext(model.milestone)}
+        </div>
+        `;
+}
+
+function initialiseCollapsibleCard(card) {
+    if (typeof card.querySelector !== 'function') return;
+    const toggle = card.querySelector('.fire-status-collapse-toggle');
+    const details = card.querySelector('.fire-status-card-details');
+    if (!toggle || !details) return;
+
+    const hasPreference = card.dataset?.fireStatusCollapsed !== undefined;
+    const defaultsCollapsed = typeof globalThis.matchMedia === 'function'
+        && globalThis.matchMedia('(max-width: 768px)').matches;
+    let collapsed = hasPreference
+        ? card.dataset.fireStatusCollapsed === 'true'
+        : defaultsCollapsed;
+
+    const applyState = () => {
+        details.hidden = collapsed;
+        toggle.setAttribute('aria-expanded', String(!collapsed));
+        toggle.textContent = collapsed ? 'Show details' : 'Hide details';
+        if (card.dataset) card.dataset.fireStatusCollapsed = String(collapsed);
+    };
+
+    toggle.addEventListener('click', () => {
+        collapsed = !collapsed;
+        applyState();
+    });
+    applyState();
 }
 
 export function renderFireStatusSummary(model, card = null) {
@@ -260,6 +298,7 @@ export function renderFireStatusSummary(model, card = null) {
     if (target.dataset) target.dataset.fireStatusState = model?.fireSummary?.state || 'setup';
     if (!model?.fireSummary || model.fireSummary.state !== 'ready') renderSetupCard(target, model);
     else renderReadyCard(target, model);
+    initialiseCollapsibleCard(target);
 }
 
 export function renderPendingFireStatusSummary({ holisticNetWorth, fireSummary } = {}, card = null) {

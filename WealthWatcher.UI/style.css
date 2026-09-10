@@ -1014,6 +1014,31 @@ body.demo-mode {
     align-items: flex-start;
 }
 
+.fire-status-card-actions {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0.6rem;
+}
+
+.fire-status-collapse-toggle {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: var(--cyan);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.35rem 0.2rem;
+    white-space: nowrap;
+}
+
+.fire-status-collapse-toggle:hover,
+.fire-status-collapse-toggle:focus-visible {
+    text-decoration: underline;
+}
+
 .fire-status-card-header h4 {
     color: var(--text-main);
     font-size: 1rem;
@@ -1170,6 +1195,11 @@ body.obfuscated .fire-status-progress-fill {
 
     .fire-status-card-link {
         align-self: flex-start;
+    }
+
+    .fire-status-card-actions {
+        justify-content: space-between;
+        width: 100%;
     }
 
     .fire-status-card-metrics {
