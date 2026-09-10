@@ -1,4 +1,4 @@
-export const STANDARD_PERIODS = Object.freeze(['1D', '1W', '1M', '3M', '1Y', 'MAX']);
+export const STANDARD_PERIODS = Object.freeze(['1D', '1W', '1M', '3M', 'YTD', 'MAX']);
 
 export function normalizePeriod(period, fallback = '1M') {
     const normalized = String(period || '').toUpperCase();

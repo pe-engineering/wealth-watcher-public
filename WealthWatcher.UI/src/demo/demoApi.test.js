@@ -533,6 +533,20 @@ test('generated demo history is date-relative and stays inside the target value 
     assert.ok(totals.some((value, index) => index > 0 && value < totals[index - 1]));
 });
 
+test('Day dashboard data uses hourly buckets within configured market hours', async () => {
+    setDemoClock('2026-09-09T12:30:00Z');
+    resetDemoState();
+
+    const dashboard = await (await handleDemoRequest('/api/dashboard?period=1D')).json();
+    const investment = dashboard.Categories.find(category => category.Id === 'investments');
+    const points = investment.Aggregate.Data;
+    const expectedLastHour = new Date('2026-09-09T12:30:00Z').getHours();
+
+    assert.equal(points[0].Time, '2026-09-09T08:00:00');
+    assert.equal(points.at(-1).Time, `2026-09-09T${String(expectedLastHour).padStart(2, '0')}:00:00`);
+    assert.equal(points.length, expectedLastHour - 7);
+});
+
 test('date rollover replaces only generated rows and preserves user entries', async () => {
     const previousStorage = globalThis.localStorage;
     const values = new Map();

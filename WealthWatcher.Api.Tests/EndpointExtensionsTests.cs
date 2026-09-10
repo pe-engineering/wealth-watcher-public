@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using WealthWatcher.Api.Data;
 using WealthWatcher.Api.Extensions;
+using WealthWatcher.Api.Integrations;
 using WealthWatcher.Api.Models;
 using WealthWatcher.Api.Services;
 using Xunit;
@@ -466,6 +467,28 @@ public sealed class EndpointExtensionsTests
     }
 
     [Fact]
+    public async Task Dashboard_day_returns_hourly_buckets_for_today()
+    {
+        await using var host = await ForecastHost.CreateAsync(
+        [
+            InvestmentAt("Fund", 100m, 80m, Utc(2026, 6, 14, 23, 15)),
+            InvestmentAt("Fund", 110m, 90m, Utc(2026, 6, 15, 0, 30)),
+            InvestmentAt("Fund", 120m, 95m, Utc(2026, 6, 15, 3, 15))
+        ], Utc(2026, 6, 15, 13, 37));
+
+        using var dashboard = await host.GetDashboardAsync("1D");
+        var investment = dashboard.RootElement.GetProperty("Categories").EnumerateArray()
+            .Single(category => category.GetProperty("Id").GetString() == AssetKindCodes.Investments);
+        var data = investment.GetProperty("Aggregate").GetProperty("Data").EnumerateArray().ToArray();
+
+        Assert.Equal(14, data.Length);
+        AssertHourlyTimeline(data, "Etc/UTC", new DateTime(2026, 6, 15, 0, 0, 0), new DateTime(2026, 6, 15, 13, 0, 0));
+        Assert.Equal(110m, data[0].GetProperty("Value").GetDecimal());
+        Assert.Equal(120m, data[3].GetProperty("Value").GetDecimal());
+        Assert.Equal(120m, data[^1].GetProperty("Value").GetDecimal());
+    }
+
+    [Fact]
     public async Task Aggregate_keeps_snaptrade_total_and_undeployed_cash_separate_for_one_asset()
     {
         var asset = new Asset { DisplayName = "AJ Bell - SIPP" };
@@ -727,7 +750,7 @@ public sealed class EndpointExtensionsTests
     }
 
     [Fact]
-    public async Task Aggregate_daily_regression_is_unchanged()
+    public async Task Aggregate_day_starts_at_today()
     {
         await using var host = await ForecastHost.CreateAsync(
         [
@@ -738,11 +761,10 @@ public sealed class EndpointExtensionsTests
         using var response = await host.GetAggregateAsync("investments", "1D");
         var data = response.RootElement.GetProperty("Data").EnumerateArray().ToArray();
 
-        Assert.Equal(new[] { "2026-06-14", "2026-06-15" }, data.Select(point => point.GetProperty("Time").GetString()));
-        Assert.Equal(100m, data[0].GetProperty("Value").GetDecimal());
-        Assert.Equal(120m, data[1].GetProperty("Value").GetDecimal());
-        Assert.False(data[0].GetProperty("HasObservation").GetBoolean());
-        Assert.True(data[1].GetProperty("HasObservation").GetBoolean());
+        Assert.Single(data);
+        Assert.Equal("2026-06-15", data[0].GetProperty("Time").GetString());
+        Assert.Equal(120m, data[0].GetProperty("Value").GetDecimal());
+        Assert.True(data[0].GetProperty("HasObservation").GetBoolean());
     }
 
     [Fact]
@@ -757,10 +779,29 @@ public sealed class EndpointExtensionsTests
         using var response = await host.GetAggregateAsync("investments", "1D");
         var data = response.RootElement.GetProperty("Data").EnumerateArray().ToArray();
 
+        Assert.Single(data);
         Assert.Equal(100m, data[0].GetProperty("Value").GetDecimal());
-        Assert.Equal(100m, data[1].GetProperty("Value").GetDecimal());
-        Assert.False(data[0].GetProperty("HasObservation").GetBoolean());
-        Assert.True(data[1].GetProperty("HasObservation").GetBoolean());
+        Assert.True(data[0].GetProperty("HasObservation").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("1W", "2026-06-09")]
+    [InlineData("1M", "2026-05-15")]
+    [InlineData("3M", "2026-03-15")]
+    [InlineData("YTD", "2026-01-01")]
+    public async Task Aggregate_period_starts_at_the_requested_calendar_boundary(
+        string period,
+        string expectedStart)
+    {
+        await using var host = await ForecastHost.CreateAsync(
+        [InvestmentAt("Fund", 100m, 80m, Utc(2026, 1, 1, 12, 0))],
+        Utc(2026, 6, 15, 13, 0));
+
+        using var response = await host.GetAggregateAsync("investments", period);
+        var data = response.RootElement.GetProperty("Data").EnumerateArray().ToArray();
+
+        Assert.Equal(expectedStart, data[0].GetProperty("Time").GetString());
+        Assert.Equal("2026-06-15", data[^1].GetProperty("Time").GetString());
     }
 
     [Fact(Skip = "Hourly aggregation retired")]
@@ -1184,6 +1225,7 @@ public sealed class EndpointExtensionsTests
             builder.Services.AddSingleton(new WealthDbContext(dbOptions));
             builder.Services.AddWealthCaching();
             builder.Services.AddScoped<WealthReadModelService>();
+            builder.Services.AddScoped<IntegrationSettingsService>();
             builder.Services.AddSingleton<TimeProvider>(new FixedTimeProvider(now ?? DateTimeOffset.UtcNow));
             builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.PropertyNamingPolicy = null);
 
@@ -1449,7 +1491,8 @@ public sealed class EndpointExtensionsTests
         public Task<JsonDocument> GetDashboardAsync(string period) =>
             GetReadModelAsync(dashboardEndpoint, new Dictionary<string, string>
             {
-                ["period"] = period
+                ["period"] = period,
+                ["timeZone"] = "Etc/UTC"
             });
 
         public Task<JsonDocument> GetHistoryAsync(string period) =>
