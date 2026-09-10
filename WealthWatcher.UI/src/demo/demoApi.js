@@ -1252,7 +1252,12 @@ function buildCategoryHistory(category, period) {
                 values[name] = numberValue(values[name]) + entryValue(entry);
                 return values;
             }, {});
-            data.push({ Time: date, Value: Number(value.toFixed(2)), Invested: Number(invested.toFixed(2)), Breakdown: breakdown, HasObservation: entries.some(entry => entry.Date === date) });
+            const point = { Time: date, Value: Number(value.toFixed(2)), Invested: Number(invested.toFixed(2)), Breakdown: breakdown, HasObservation: entries.some(entry => entry.Date === date) };
+            if (category.Id === 'property') {
+                point.GrossValue = Number(currentEntries.reduce((total, entry) => total + numberValue(entry.Value), 0).toFixed(2));
+                point.Equity = point.Value;
+            }
+            data.push(point);
         }
     });
     const aggregate = {
