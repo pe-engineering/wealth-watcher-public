@@ -656,6 +656,7 @@ public static class EndpointExtensions
             var runningBalanceNames = new Dictionary<string, string>();
             var runningBalanceIsIntegration = new Dictionary<string, bool>();
             var runningInvested = new Dictionary<string, decimal>();
+            var runningPropertyValues = new Dictionary<string, decimal>();
 
             bool IsIntegrationEntry(AssetValueEntry entry)
             {
@@ -700,6 +701,7 @@ public static class EndpointExtensions
                 runningBalanceNames.Remove(key);
                 runningBalanceIsIntegration.Remove(key);
                 runningInvested.Remove(key);
+                runningPropertyValues.Remove(key);
             }
 
             bool HasIntegrationBalance(string name) => runningBalanceNames.Any(pair =>
@@ -729,9 +731,12 @@ public static class EndpointExtensions
                     return;
                 }
 
-                var value = isPropertyCategory && entry is PropertyAssetValueEntry property
-                    ? entry.Value - (property.Mortgage ?? 0m)
-                    : entry.Value;
+                var value = entry.Value;
+                if (isPropertyCategory && entry is PropertyAssetValueEntry property)
+                {
+                    runningPropertyValues[key] = entry.Value;
+                    value -= property.Mortgage ?? 0m;
+                }
                 runningBalances[key] = value;
                 runningBalanceNames[key] = name;
                 runningBalanceIsIntegration[key] = isIntegration;
@@ -782,6 +787,8 @@ public static class EndpointExtensions
                         {
                             Time = TimeZoneInfo.ConvertTime(bucketStart, localTimeZone!).ToString("o"),
                             Value = runningBalances.Values.Sum(),
+                            GrossValue = isPropertyCategory ? runningPropertyValues.Values.Sum() : null,
+                            Equity = isPropertyCategory ? runningBalances.Values.Sum() : null,
                             Invested = runningInvested.Values.Sum(),
                             HasObservation = hasObservation,
                             Breakdown = BuildBreakdown()
@@ -813,6 +820,8 @@ public static class EndpointExtensions
                     {
                         Time = currentDate.ToString("yyyy-MM-dd"),
                         Value = runningBalances.Values.Sum(),
+                        GrossValue = isPropertyCategory ? runningPropertyValues.Values.Sum() : null,
+                        Equity = isPropertyCategory ? runningBalances.Values.Sum() : null,
                         Invested = runningInvested.Values.Sum(),
                         HasObservation = hasObservation,
                         Breakdown = BuildBreakdown()

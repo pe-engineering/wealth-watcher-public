@@ -1248,6 +1248,7 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
     const propertyEntries = getPropertyEntries(propertyDetails);
     const showSparklines = store.state.generalSettings?.showSparklines !== false;
     const chartHistory = aggregateAssetCardHistory(history, selectedPeriod);
+    const isPropertyCard = normalizeCode(cat.Id) === 'property';
 
     let breakdownHtml = '<div class="breakdown-list">';
     
@@ -1368,16 +1369,21 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
     
     container.innerHTML += cardHtml;
     const renderedCard = container.lastElementChild;
+    const accessibleHeaders = isPropertyCard
+        ? [{ key: 'date', label: 'Date' }, { key: 'grossValue', label: 'Property value' }, { key: 'equity', label: 'Equity' }]
+        : [{ key: 'date', label: 'Date' }, { key: 'value', label: 'Value' }];
     renderAccessibleChartData(renderedCard?.querySelector?.('[data-dashboard-chart-data]'), {
         summary: `View ${displayLabel} trend data`,
-        headers: [{ key: 'date', label: 'Date' }, { key: 'value', label: 'Value' }],
+        headers: accessibleHeaders,
         rows: chartHistory.map(point => ({
             date: point?.Time,
-            value: Number(point?.Value ?? 0)
+            value: Number(point?.Value ?? 0),
+            grossValue: Number(point?.GrossValue ?? point?.Value ?? 0),
+            equity: Number(point?.Equity ?? point?.Value ?? 0)
         })),
         formatCell: (row, key) => key === 'date'
             ? row.date
-            : (globalThis.window?.isObfuscated ? '£***' : formatter.format(row.value))
+            : (globalThis.window?.isObfuscated ? '£***' : formatter.format(row[key]))
     });
 
     setTimeout(() => {
@@ -1388,22 +1394,22 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
             type: 'line',
             data: {
                 labels: chartHistory.map(h => h.Time),
-                datasets: [{
-                    data: chartHistory.map(h => h.Value),
-                    borderColor: cardColor, borderWidth: 2, backgroundColor: 'transparent',
-                    pointRadius: 0, pointHoverRadius: 4, tension: 0.4
-                }]
+                datasets: buildAssetCardChartSeries(cat.Id, chartHistory, cardColor)
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: { 
-                    legend: { display: false }, 
+                    legend: {
+                        display: isPropertyCard,
+                        labels: { color: '#cbd5e1', usePointStyle: true, pointStyle: 'line', boxWidth: 24, boxHeight: 2 }
+                    },
                     tooltip: { 
                         enabled: true, backgroundColor: '#1e293b', titleColor: '#94a3b8', bodyColor: '#f8fafc', displayColors: false,
                         callbacks: {
                             label: function(context) {
-                                if (window.isObfuscated) return 'Total: £***';
+                                if (window.isObfuscated) return `${context.dataset.label || 'Total'}: £***`;
+                                if (isPropertyCard) return `${context.dataset.label}: ${formatter.format(context.raw)}`;
                                 const dataPoint = chartHistory[context.dataIndex];
                                 let lines = [`Total: ${formatter.format(context.raw)}`];
                                 if (dataPoint && dataPoint.Breakdown) {
@@ -1421,6 +1427,39 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
             }
         });
     }, 0);
+}
+
+export function buildAssetCardChartSeries(categoryId, history, cardColor) {
+    const points = Array.isArray(history) ? history : [];
+    const common = {
+        borderWidth: 2,
+        backgroundColor: 'transparent',
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        tension: 0.4
+    };
+    if (normalizeCode(categoryId) === 'property') {
+        return [
+            {
+                ...common,
+                label: 'Property value',
+                data: points.map(point => Number(point?.GrossValue ?? point?.Value ?? 0)),
+                borderColor: cardColor
+            },
+            {
+                ...common,
+                label: 'Equity',
+                data: points.map(point => Number(point?.Equity ?? point?.Value ?? 0)),
+                borderColor: '#e2e8f0'
+            }
+        ];
+    }
+    return [{
+        ...common,
+        label: 'Total',
+        data: points.map(point => Number(point?.Value ?? 0)),
+        borderColor: cardColor
+    }];
 }
 
 const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000;

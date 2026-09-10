@@ -182,6 +182,7 @@ public sealed class WealthReadModelService(
         var runningBalanceNames = new Dictionary<string, string>();
         var runningBalanceIsIntegration = new Dictionary<string, bool>();
         var runningInvested = new Dictionary<string, decimal>();
+        var runningPropertyValues = new Dictionary<string, decimal>();
 
         bool IsIntegrationEntry(AssetValueEntry entry)
         {
@@ -225,6 +226,7 @@ public sealed class WealthReadModelService(
             runningBalanceNames.Remove(key);
             runningBalanceIsIntegration.Remove(key);
             runningInvested.Remove(key);
+            runningPropertyValues.Remove(key);
         }
 
         bool HasIntegrationBalance(string name) => runningBalanceNames.Any(pair =>
@@ -254,9 +256,12 @@ public sealed class WealthReadModelService(
                 return;
             }
 
-            var value = isPropertyCategory && entry is PropertyAssetValueEntry property
-                ? entry.Value - (property.Mortgage ?? 0m)
-                : entry.Value;
+            var value = entry.Value;
+            if (isPropertyCategory && entry is PropertyAssetValueEntry property)
+            {
+                runningPropertyValues[key] = entry.Value;
+                value -= property.Mortgage ?? 0m;
+            }
             runningBalances[key] = value;
             runningBalanceNames[key] = name;
             runningBalanceIsIntegration[key] = isIntegration;
@@ -301,6 +306,8 @@ public sealed class WealthReadModelService(
             {
                 Time = currentDate.ToString("yyyy-MM-dd"),
                 Value = runningBalances.Values.Sum(),
+                GrossValue = isPropertyCategory ? runningPropertyValues.Values.Sum() : null,
+                Equity = isPropertyCategory ? runningBalances.Values.Sum() : null,
                 Invested = runningInvested.Values.Sum(),
                 HasObservation = hasObservation,
                 Breakdown = BuildBreakdown()

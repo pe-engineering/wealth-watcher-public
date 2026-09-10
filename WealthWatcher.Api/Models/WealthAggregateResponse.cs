@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace WealthWatcher.Api.Models;
 
 public sealed class WealthAggregateResponse
@@ -14,6 +16,10 @@ public sealed class WealthAggregatePoint
 {
     public string Time { get; init; } = string.Empty;
     public decimal Value { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? GrossValue { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public decimal? Equity { get; init; }
     public decimal Invested { get; init; }
     public bool HasObservation { get; init; }
     public Dictionary<string, decimal> Breakdown { get; init; } = new(StringComparer.OrdinalIgnoreCase);

@@ -869,6 +869,8 @@ public sealed class EndpointExtensionsTests
         Assert.False(details.TryGetProperty("LTV", out _));
         var history = response.RootElement.GetProperty("Data").EnumerateArray().ToArray();
         Assert.Equal(220m, history[^1].GetProperty("Value").GetDecimal());
+        Assert.Equal(510m, history[^1].GetProperty("GrossValue").GetDecimal());
+        Assert.Equal(220m, history[^1].GetProperty("Equity").GetDecimal());
     }
 
     [Fact]

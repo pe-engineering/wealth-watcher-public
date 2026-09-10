@@ -171,6 +171,7 @@ const {
     loadDashboard,
     setupPeriodListeners,
     aggregateAssetCardHistory,
+    buildAssetCardChartSeries,
     getDashboardAssetName,
     getActiveUnclassifiedAssetCount,
     renderUnclassifiedAssetBanner
@@ -194,6 +195,21 @@ test('asset-card chart aggregation uses range-aware closing buckets and prefers 
     assert.equal(yearly.length, 3);
     assert.equal(yearly[0].Time, '2026-01-06');
     assert.equal(yearly.at(-1).Time, '2026-01-15');
+});
+
+test('property asset-card charts keep gross value and equity as separate series', () => {
+    const history = [
+        { Time: '2026-01-01', Value: 100, GrossValue: 200, Equity: 100 },
+        { Time: '2026-01-02', Value: 125, GrossValue: 225, Equity: 125 }
+    ];
+
+    const series = buildAssetCardChartSeries('property', history, '#f59e0b');
+
+    assert.equal(series.length, 2);
+    assert.equal(series[0].label, 'Property value');
+    assert.deepEqual(series[0].data, [200, 225]);
+    assert.equal(series[1].label, 'Equity');
+    assert.deepEqual(series[1].data, [100, 125]);
 });
 
 test('Dashboard shows an accessible Unclassified banner only above the threshold', () => {
