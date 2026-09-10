@@ -51,6 +51,9 @@ test('FIRE status card keeps the FIRE scope distinct from holistic net worth', (
     assert.match(card.innerHTML, /Projected FIRE date/);
     assert.match(card.innerHTML, /February 2043/);
     assert.match(card.innerHTML, /Review £1,850.00 unallocated in Budget/);
+    assert.match(card.innerHTML, /class="fire-status-collapse-toggle"/);
+    assert.match(card.innerHTML, /aria-controls="fire-status-card-details"/);
+    assert.match(card.innerHTML, /id="fire-status-card-details"/);
     assert.doesNotMatch(card.innerHTML, /On track/);
     assert.equal(card.dataset.fireStatusState, 'ready');
 });
@@ -106,7 +109,51 @@ test('FIRE status renders a setup state without inventing progress', () => {
 
     assert.equal(card.hidden, false);
     assert.match(card.innerHTML, /Set up your FIRE snapshot/);
+    assert.match(card.innerHTML, /class="fire-status-collapse-toggle"/);
     assert.doesNotMatch(card.innerHTML, /role="progressbar"/);
+});
+
+test('FIRE status details default closed on mobile and toggle accessibly', () => {
+    store.state.featureSettings = { ...originalFeatureSettings, fire: true, tracker: true, forecast: true };
+    const originalMatchMedia = globalThis.matchMedia;
+    const details = { hidden: false };
+    const attributes = {};
+    let clickHandler = null;
+    const toggle = {
+        textContent: '',
+        setAttribute(name, value) { attributes[name] = value; },
+        addEventListener(type, handler) { if (type === 'click') clickHandler = handler; }
+    };
+    const card = {
+        hidden: true,
+        innerHTML: '',
+        dataset: {},
+        querySelector(selector) {
+            if (selector === '.fire-status-collapse-toggle') return toggle;
+            if (selector === '.fire-status-card-details') return details;
+            return null;
+        }
+    };
+
+    try {
+        globalThis.matchMedia = () => ({ matches: true });
+        renderFireStatusSummary(buildFireStatusViewModel({
+            holisticNetWorth: 442500,
+            fireSummary: readySummary(),
+            projection: { status: 'projected', date: '2043-02' }
+        }), card);
+
+        assert.equal(details.hidden, true);
+        assert.equal(attributes['aria-expanded'], 'false');
+        assert.equal(toggle.textContent, 'Show details');
+        clickHandler();
+        assert.equal(details.hidden, false);
+        assert.equal(attributes['aria-expanded'], 'true');
+        assert.equal(toggle.textContent, 'Hide details');
+        assert.equal(card.dataset.fireStatusCollapsed, 'false');
+    } finally {
+        globalThis.matchMedia = originalMatchMedia;
+    }
 });
 
 test('FIRE status includes holistic milestone progress in the shared card', () => {
