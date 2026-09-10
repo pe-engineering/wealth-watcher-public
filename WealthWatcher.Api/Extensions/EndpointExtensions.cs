@@ -488,14 +488,20 @@ public static class EndpointExtensions
 
         app.MapGet("/api/dashboard", async (
             string? period,
+            string? timeZone,
             [FromServices] WealthReadModelService readModel,
             [FromServices] IApplicationCache cache,
             [FromServices] TimeProvider timeProvider,
+            [FromServices] IntegrationSettingsService integrationSettings,
             CancellationToken cancellationToken) =>
         {
             var selectedPeriod = string.IsNullOrWhiteSpace(period) ? "1M" : period.Trim();
             if (!IsSupportedPeriod(selectedPeriod))
                 return UnsupportedPeriod(selectedPeriod);
+
+            if (selectedPeriod.Equals("1D", StringComparison.OrdinalIgnoreCase) &&
+                !TryResolveTimeZone(timeZone, out _))
+                return Results.BadRequest(new { Error = "A valid timeZone query parameter is required for Day aggregation." });
 
             var today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
             var historicalThrough = today.AddDays(-1);
@@ -503,13 +509,18 @@ public static class EndpointExtensions
                 "1D",
                 null,
                 cancellationToken);
-            var historical = await GetHistoricalAggregatesAsync(
-                cache,
-                readModel,
-                selectedPeriod,
-                historicalThrough,
-                cancellationToken);
-            var aggregates = MergeCurrentAggregates(historical, current, today);
+            var aggregates = selectedPeriod.Equals("1D", StringComparison.OrdinalIgnoreCase)
+                ? await readModel.GetAggregatesAsync(
+                    "1D",
+                    null,
+                    cancellationToken,
+                    timeZone,
+                    await integrationSettings.GetMarketHoursAsync(cancellationToken),
+                    intraday: true)
+                : MergeCurrentAggregates(
+                    await GetHistoricalAggregatesAsync(cache, readModel, selectedPeriod, historicalThrough, cancellationToken),
+                    current,
+                    today);
 
             var ytdHistorical = await GetHistoricalAggregatesAsync(
                 cache,
@@ -1174,6 +1185,19 @@ public static class EndpointExtensions
 
     private static bool IsSupportedPeriod(string period) =>
         SupportedPeriods.Contains(period, StringComparer.OrdinalIgnoreCase);
+
+    private static bool TryResolveTimeZone(string? timeZone, out TimeZoneInfo? resolved)
+    {
+        resolved = null;
+        if (string.IsNullOrWhiteSpace(timeZone)) return false;
+        try
+        {
+            resolved = TimeZoneInfo.FindSystemTimeZoneById(timeZone);
+            return true;
+        }
+        catch (TimeZoneNotFoundException) { return false; }
+        catch (InvalidTimeZoneException) { return false; }
+    }
 
     private static IResult UnsupportedPeriod(string period) => Results.BadRequest(new
     {

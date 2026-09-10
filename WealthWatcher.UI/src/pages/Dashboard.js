@@ -301,7 +301,10 @@ async function loadDashboardInternal() {
     store.state.categories = {};
     const assetGroupDescriptors = getAssetGroupDescriptors();
 
-    const dashboardUrl = `${API_BASE_URL}/dashboard?period=${encodeURIComponent(selectedPeriod)}`;
+    const dashboardTimeZone = selectedPeriod === '1D'
+        ? `&timeZone=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')}`
+        : '';
+    const dashboardUrl = `${API_BASE_URL}/dashboard?period=${encodeURIComponent(selectedPeriod)}${dashboardTimeZone}`;
     const dashboardResponse = await requestDashboardData(dashboardUrl);
     const results = (dashboardResponse?.Categories || []).map(category => ({
         cat: {

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using WealthWatcher.Api.Data;
+using WealthWatcher.Api.Integrations;
 using WealthWatcher.Api.Models;
 
 namespace WealthWatcher.Api.Services;
@@ -17,7 +18,10 @@ public sealed class WealthReadModelService(
     public async Task<IReadOnlyList<WealthCategoryAggregate>> GetAggregatesAsync(
         string? period,
         DateOnly? asOfDate,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? timeZone = null,
+        MarketHoursSettings? marketHours = null,
+        bool intraday = false)
     {
         var kinds = await db.AssetKinds
             .AsNoTracking()
@@ -30,6 +34,9 @@ public sealed class WealthReadModelService(
 
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
         var effectiveNowUtc = asOfDate?.ToDateTime(TimeOnly.MaxValue) ?? nowUtc;
+        var intradayTimeZone = intraday && period?.Equals("1D", StringComparison.OrdinalIgnoreCase) == true && !asOfDate.HasValue
+            ? TimeZoneInfo.FindSystemTimeZoneById(string.IsNullOrWhiteSpace(timeZone) ? "UTC" : timeZone)
+            : null;
         var providerCodes = (await db.IntegrationProviders
                 .AsNoTracking()
                 .Select(provider => provider.Code)
@@ -71,7 +78,9 @@ public sealed class WealthReadModelService(
                         categoryEntries,
                         period,
                         effectiveNowUtc,
-                        providerCodes)
+                        providerCodes,
+                        intradayTimeZone,
+                        marketHours)
                 };
             })
             .ToList();
@@ -169,7 +178,9 @@ public sealed class WealthReadModelService(
         IReadOnlyList<AssetValueEntry> allEntries,
         string? period,
         DateTime effectiveNowUtc,
-        IReadOnlySet<string> configuredProviderCodes)
+        IReadOnlySet<string> configuredProviderCodes,
+        TimeZoneInfo? intradayTimeZone,
+        MarketHoursSettings? marketHours)
     {
         if (allEntries.Count == 0)
             return new WealthAggregateResponse();
@@ -285,8 +296,75 @@ public sealed class WealthReadModelService(
                 .GroupBy(pair => runningBalanceNames.TryGetValue(pair.Key, out var name) ? name : pair.Key)
                 .ToDictionary(group => group.Key, group => group.Sum(pair => pair.Value));
 
-        var cutoff = ResolveCutoff(period, effectiveNowUtc, allEntries);
+        var isIntraday = intradayTimeZone is not null;
+        var cutoff = isIntraday
+            ? TimeZoneInfo.ConvertTimeToUtc(
+                DateTime.SpecifyKind(TimeZoneInfo.ConvertTimeFromUtc(effectiveNowUtc, intradayTimeZone!).Date, DateTimeKind.Unspecified),
+                intradayTimeZone!)
+            : ResolveCutoff(period, effectiveNowUtc, allEntries);
+        DateTime? marketCloseUtc = null;
+        if (isIntraday && marketHours is not null && allEntries.Any(entry =>
+                entry.SourceLink?.ExternalValue?.IntegrationAccount?.IntegrationConnection?.OnlyPollDuringMarketTimes == true))
+        {
+            var localDate = TimeZoneInfo.ConvertTimeFromUtc(effectiveNowUtc, intradayTimeZone!).Date;
+            var marketDay = marketHours.Days.FirstOrDefault(day =>
+                day.Enabled && day.Day.Equals(localDate.DayOfWeek.ToString(), StringComparison.OrdinalIgnoreCase));
+            if (marketDay is not null &&
+                TimeOnly.TryParse(marketDay.OpenTime, out var marketOpen) &&
+                TimeOnly.TryParse(marketDay.CloseTime, out var marketClose))
+            {
+                cutoff = TimeZoneInfo.ConvertTimeToUtc(
+                    DateTime.SpecifyKind(localDate.Add(marketOpen.ToTimeSpan()), DateTimeKind.Unspecified),
+                    intradayTimeZone!);
+                marketCloseUtc = TimeZoneInfo.ConvertTimeToUtc(
+                    DateTime.SpecifyKind(localDate.Add(marketClose.ToTimeSpan()), DateTimeKind.Unspecified),
+                    intradayTimeZone!);
+            }
+        }
         var resultData = new List<WealthAggregatePoint>();
+        if (isIntraday)
+        {
+            foreach (var entry in allEntries.Where(entry => EntryTimestampUtc(entry) < cutoff))
+                RecordEntry(entry, SetRunningBalance, runningInvested, EntryIdentity);
+            RemoveArchivedBalances(cutoff);
+
+            var currentInstant = new DateTimeOffset(
+                marketCloseUtc is { } close && close < effectiveNowUtc ? close : effectiveNowUtc,
+                TimeSpan.Zero);
+            var entriesForToday = allEntries
+                .Select(entry => (Entry: entry, Timestamp: new DateTimeOffset(EntryTimestampUtc(entry), TimeSpan.Zero)))
+                .Where(item => item.Timestamp.UtcDateTime >= cutoff && item.Timestamp <= currentInstant)
+                .OrderBy(item => item.Timestamp)
+                .ToList();
+            var nextEntryIndex = 0;
+            for (var bucketStart = new DateTimeOffset(cutoff, TimeSpan.Zero);
+                 bucketStart <= currentInstant;
+                 bucketStart = bucketStart.AddHours(1))
+            {
+                var bucketEnd = bucketStart.AddHours(1);
+                var hasObservation = false;
+                while (nextEntryIndex < entriesForToday.Count && entriesForToday[nextEntryIndex].Timestamp < bucketEnd)
+                {
+                    hasObservation = true;
+                    RecordEntry(entriesForToday[nextEntryIndex++].Entry, SetRunningBalance, runningInvested, EntryIdentity);
+                }
+                RemoveArchivedBalances(bucketStart.UtcDateTime);
+                if (runningBalances.Count == 0) continue;
+                resultData.Add(new WealthAggregatePoint
+                {
+                    Time = TimeZoneInfo.ConvertTime(bucketStart, intradayTimeZone!).ToString("o"),
+                    Value = runningBalances.Values.Sum(),
+                    GrossValue = isPropertyCategory ? runningPropertyValues.Values.Sum() : null,
+                    Equity = isPropertyCategory ? runningBalances.Values.Sum() : null,
+                    PropertyValues = BuildPropertyValues(),
+                    Invested = runningInvested.Values.Sum(),
+                    HasObservation = hasObservation,
+                    Breakdown = BuildBreakdown()
+                });
+            }
+        }
+        else
+        {
         var cutoffDate = DateOnly.FromDateTime(cutoff);
         var todayDate = DateOnly.FromDateTime(effectiveNowUtc);
         foreach (var entry in allEntries.Where(entry => entry.Date < cutoffDate))
@@ -317,6 +395,7 @@ public sealed class WealthReadModelService(
                 HasObservation = hasObservation,
                 Breakdown = BuildBreakdown()
             });
+        }
         }
 
         PropertyAggregateDetails? propertyDetails = null;

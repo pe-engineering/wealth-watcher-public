@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using WealthWatcher.Api.Data;
 using WealthWatcher.Api.Extensions;
+using WealthWatcher.Api.Integrations;
 using WealthWatcher.Api.Models;
 using WealthWatcher.Api.Services;
 using Xunit;
@@ -463,6 +464,28 @@ public sealed class EndpointExtensionsTests
         Assert.Contains(dashboard.RootElement.GetProperty("Categories").EnumerateArray(),
             category => category.GetProperty("Id").GetString() == AssetKindCodes.Investments);
         Assert.True(history.RootElement.GetProperty("Timeline").GetArrayLength() >= 2);
+    }
+
+    [Fact]
+    public async Task Dashboard_day_returns_hourly_buckets_for_today()
+    {
+        await using var host = await ForecastHost.CreateAsync(
+        [
+            InvestmentAt("Fund", 100m, 80m, Utc(2026, 6, 14, 23, 15)),
+            InvestmentAt("Fund", 110m, 90m, Utc(2026, 6, 15, 0, 30)),
+            InvestmentAt("Fund", 120m, 95m, Utc(2026, 6, 15, 3, 15))
+        ], Utc(2026, 6, 15, 13, 37));
+
+        using var dashboard = await host.GetDashboardAsync("1D");
+        var investment = dashboard.RootElement.GetProperty("Categories").EnumerateArray()
+            .Single(category => category.GetProperty("Id").GetString() == AssetKindCodes.Investments);
+        var data = investment.GetProperty("Aggregate").GetProperty("Data").EnumerateArray().ToArray();
+
+        Assert.Equal(14, data.Length);
+        AssertHourlyTimeline(data, "Etc/UTC", new DateTime(2026, 6, 15, 0, 0, 0), new DateTime(2026, 6, 15, 13, 0, 0));
+        Assert.Equal(110m, data[0].GetProperty("Value").GetDecimal());
+        Assert.Equal(120m, data[3].GetProperty("Value").GetDecimal());
+        Assert.Equal(120m, data[^1].GetProperty("Value").GetDecimal());
     }
 
     [Fact]
@@ -1202,6 +1225,7 @@ public sealed class EndpointExtensionsTests
             builder.Services.AddSingleton(new WealthDbContext(dbOptions));
             builder.Services.AddWealthCaching();
             builder.Services.AddScoped<WealthReadModelService>();
+            builder.Services.AddScoped<IntegrationSettingsService>();
             builder.Services.AddSingleton<TimeProvider>(new FixedTimeProvider(now ?? DateTimeOffset.UtcNow));
             builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.PropertyNamingPolicy = null);
 
@@ -1467,7 +1491,8 @@ public sealed class EndpointExtensionsTests
         public Task<JsonDocument> GetDashboardAsync(string period) =>
             GetReadModelAsync(dashboardEndpoint, new Dictionary<string, string>
             {
-                ["period"] = period
+                ["period"] = period,
+                ["timeZone"] = "Etc/UTC"
             });
 
         public Task<JsonDocument> GetHistoryAsync(string period) =>

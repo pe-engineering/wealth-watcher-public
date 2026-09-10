@@ -1249,18 +1249,18 @@ function buildCategoryHistory(category, period) {
     const dates = allObservationDates(now).filter(date => !start || date >= start);
     const latest = new Map();
     const data = [];
-    dates.forEach(date => {
-        entries.filter(entry => entry.Date <= date).forEach(entry => latest.set(entityKey(entry), entry));
+
+    const appendPoint = (time, hasObservation) => {
         const currentEntries = [...latest.values()];
         const value = currentEntries.reduce((total, entry) => total + entryValue(entry), 0);
-        if (currentEntries.length || date === todayKey()) {
+        if (currentEntries.length || String(time).startsWith(todayKey())) {
             const invested = currentEntries.reduce((total, entry) => total + numberValue(entry.InvestedCapital), 0);
             const breakdown = currentEntries.reduce((values, entry) => {
                 const name = entry.Name || entry.Id;
                 values[name] = numberValue(values[name]) + entryValue(entry);
                 return values;
             }, {});
-            const point = { Time: date, Value: Number(value.toFixed(2)), Invested: Number(invested.toFixed(2)), Breakdown: breakdown, HasObservation: entries.some(entry => entry.Date === date) };
+            const point = { Time: time, Value: Number(value.toFixed(2)), Invested: Number(invested.toFixed(2)), Breakdown: breakdown, HasObservation: hasObservation };
             if (category.Id === 'property') {
                 point.GrossValue = Number(currentEntries.reduce((total, entry) => total + numberValue(entry.Value), 0).toFixed(2));
                 point.Equity = point.Value;
@@ -1272,6 +1272,25 @@ function buildCategoryHistory(category, period) {
             }
             data.push(point);
         }
+    };
+
+    if (String(period).toUpperCase() === '1D') {
+        const today = todayKey();
+        entries.filter(entry => entry.Date < today).forEach(entry => latest.set(entityKey(entry), entry));
+        const todayEntries = entries.filter(entry => entry.Date === today);
+        const marketDay = demoState.marketHours?.Days?.find(day =>
+            day.Enabled && day.Day === now.toLocaleDateString('en-GB', { weekday: 'long' }));
+        const openHour = marketDay ? Number(marketDay.OpenTime.slice(0, 2)) : 0;
+        const closeHour = marketDay ? Math.ceil(Number(marketDay.CloseTime.slice(0, 2)) + Number(marketDay.CloseTime.slice(3, 5)) / 60) - 1 : 23;
+        const lastHour = Math.min(now.getHours(), closeHour);
+        for (let hour = openHour; hour <= lastHour; hour++) {
+            const bucketEntries = todayEntries.filter(entry => Number((entry.Time || '00').slice(0, 2)) === hour);
+            bucketEntries.forEach(entry => latest.set(entityKey(entry), entry));
+            appendPoint(`${today}T${String(hour).padStart(2, '0')}:00:00`, bucketEntries.length > 0);
+        }
+    } else dates.forEach(date => {
+        entries.filter(entry => entry.Date <= date).forEach(entry => latest.set(entityKey(entry), entry));
+        appendPoint(date, entries.some(entry => entry.Date === date));
     });
     const aggregate = {
         Data: data,
