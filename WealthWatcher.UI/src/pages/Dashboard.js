@@ -1434,7 +1434,7 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
             equity: Number(point?.Equity ?? point?.Value ?? 0)
         })),
         formatCell: (row, key) => key === 'date'
-            ? row.date
+            ? formatDashboardTooltipTitle(row.date, selectedPeriod)
             : (globalThis.window?.isObfuscated ? '£***' : formatter.format(row[key]))
     });
 
@@ -1459,6 +1459,9 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
                     tooltip: { 
                         enabled: true, backgroundColor: '#1e293b', titleColor: '#94a3b8', bodyColor: '#f8fafc', displayColors: false,
                         callbacks: {
+                            title: contexts => formatDashboardTooltipTitle(
+                                chartHistory[contexts[0]?.dataIndex]?.Time,
+                                selectedPeriod),
                             label: function(context) {
                                 if (window.isObfuscated) return `${context.dataset.label || 'Total'}: £***`;
                                 if (isPropertyCard) return `${context.dataset.label}: ${formatter.format(context.raw)}`;
@@ -1515,6 +1518,51 @@ export function buildAssetCardChartSeries(categoryId, history, cardColor) {
 }
 
 const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000;
+
+export function formatDashboardTooltipTitle(value, period = store.state.currentPeriod) {
+    if (!value) return '';
+    const date = parseDashboardDate(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+
+    if (normalizePeriod(period) === '1D') {
+        return formatDashboardHourlyInterval(date);
+    }
+
+    return new Intl.DateTimeFormat('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+    }).format(date);
+}
+
+function parseDashboardDate(value) {
+    if (value instanceof Date) return new Date(value.getTime());
+    const text = String(value);
+    const localDateValue = text.includes('T')
+        ? text.replace(/\.(\d{3})\d+/, '.$1')
+        : `${text}T00:00:00`;
+    return new Date(localDateValue);
+}
+
+function formatDashboardHourlyInterval(start) {
+    const formatOptions = {
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23'
+    };
+    const timeFormatter = new Intl.DateTimeFormat(undefined, formatOptions);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const startLabel = timeFormatter.format(start);
+    const endLabel = timeFormatter.format(end);
+
+    if (startLabel !== endLabel) return `${startLabel}\u2013${endLabel}`;
+
+    const zoneFormatter = new Intl.DateTimeFormat(undefined, {
+        ...formatOptions,
+        timeZoneName: 'short'
+    });
+    return `${zoneFormatter.format(start)}\u2013${zoneFormatter.format(end)}`;
+}
 
 /**
  * Keeps dashboard asset charts readable at every range without changing the

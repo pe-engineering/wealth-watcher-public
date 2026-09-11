@@ -26,6 +26,15 @@ const MARKET_DAYS = [
     { value: 'Saturday', label: 'Saturday' },
     { value: 'Sunday', label: 'Sunday' }
 ];
+const POLLING_SCHEDULE_OPTIONS = [
+    { value: 'EveryNMinutes', label: 'Every N minutes' },
+    { value: 'Cron', label: 'Cron' },
+    { value: 'HourlyAt', label: 'Hourly @ X' },
+    { value: 'HourlyOnTheHour', label: 'Hourly On The Hour' },
+    { value: 'DailyAt', label: 'Daily @ X' },
+    { value: 'WeeklyAt', label: 'Weekly @ X' }
+];
+const POLLING_SCHEDULE_TYPES = new Set(POLLING_SCHEDULE_OPTIONS.map(option => option.value));
 let catalog = [];
 let connections = [];
 let marketHoursSettings = createDefaultMarketHoursSettings();
@@ -135,6 +144,47 @@ function isSecureRelayAddress(value) {
     }
 }
 
+function pollingScheduleType(connection) {
+    const configured = String(connection?.PollingScheduleType || '').trim();
+    return POLLING_SCHEDULE_TYPES.has(configured) ? configured : 'EveryNMinutes';
+}
+
+function pollingScheduleValue(connection, type = pollingScheduleType(connection)) {
+    if (type === 'EveryNMinutes') return String(connection?.PollingIntervalMinutes || 1);
+    const configured = String(connection?.PollingScheduleValue || '').trim();
+    if (configured) return configured;
+    if (type === 'Cron') return '0 * * * *';
+    if (type === 'HourlyAt') return '0';
+    if (type === 'DailyAt' || type === 'WeeklyAt') return '08:00';
+    return '';
+}
+
+function pollingScheduleDay(connection) {
+    const configured = String(connection?.PollingScheduleDay || '').trim();
+    return MARKET_DAYS.some(day => day.value === configured) ? configured : 'Monday';
+}
+
+function pollingScheduleDefaultValue(type, connection) {
+    if (type === 'EveryNMinutes') return String(connection?.PollingIntervalMinutes || 1);
+    if (type === 'Cron') return '0 * * * *';
+    if (type === 'HourlyAt') return '0';
+    if (type === 'DailyAt' || type === 'WeeklyAt') return '08:00';
+    return '';
+}
+
+function pollingScheduleDescription(connection) {
+    const type = pollingScheduleType(connection);
+    const value = pollingScheduleValue(connection, type);
+    switch (type) {
+        case 'Cron': return `cron ${value}`;
+        case 'HourlyAt': return `hourly at minute ${value}`;
+        case 'HourlyOnTheHour': return 'hourly on the hour';
+        case 'DailyAt': return `daily at ${value}`;
+        case 'WeeklyAt': return `weekly on ${pollingScheduleDay(connection)} at ${value}`;
+        default: return `every ${connection?.PollingIntervalMinutes || value} minutes`;
+    }
+}
+
 function renderProviderWebhookSetup(descriptor) {
     if (descriptor?.SupportsWebhooks !== true || webhookRelayLoadState.status !== 'ready') return '';
 
@@ -215,11 +265,48 @@ async function copyWebhookUrl(value) {
 
 function renderPollingControls(connection, descriptor, pollingSelected) {
     const disabledAttribute = pollingSelected ? '' : ' disabled';
+    const scheduleType = pollingScheduleType(connection);
+    const scheduleValue = pollingScheduleValue(connection, scheduleType);
+    const scheduleDay = pollingScheduleDay(connection);
+    const scheduleOptions = POLLING_SCHEDULE_OPTIONS.map(option =>
+        `<option value="${option.value}"${option.value === scheduleType ? ' selected' : ''}>${option.label}</option>`
+    ).join('');
+    const scheduleValueControl = scheduleType === 'Cron'
+        ? `<label class="integration-polling-value-control">
+                <span>Cron expression</span>
+                <input class="integration-text-input integration-cron-input" type="text" value="${escapeHtml(scheduleValue)}" placeholder="0 * * * *" data-integration-polling-schedule-value="${escapeHtml(connection.Id)}" aria-label="Cron expression for ${escapeHtml(connection.DisplayName)}"${disabledAttribute}>
+                <small>minute hour day-of-month month day-of-week</small>
+            </label>`
+        : scheduleType === 'HourlyAt'
+            ? `<label class="integration-polling-value-control">
+                    <span>Minute past the hour</span>
+                    <input class="integration-number-input" type="number" min="0" max="59" step="1" value="${escapeHtml(scheduleValue)}" data-integration-polling-schedule-value="${escapeHtml(connection.Id)}" aria-label="Minute past the hour for ${escapeHtml(connection.DisplayName)}"${disabledAttribute}>
+                </label>`
+            : scheduleType === 'DailyAt' || scheduleType === 'WeeklyAt'
+                ? `<label class="integration-polling-value-control">
+                        <span>Time</span>
+                        <input class="integration-time-input" type="time" value="${escapeHtml(scheduleValue)}" data-integration-polling-schedule-value="${escapeHtml(connection.Id)}" aria-label="Polling time for ${escapeHtml(connection.DisplayName)}"${disabledAttribute}>
+                    </label>`
+                : '';
+    const weeklyDayControl = scheduleType === 'WeeklyAt'
+        ? `<label class="integration-polling-value-control">
+                <span>Day</span>
+                <select class="integration-select" data-integration-polling-schedule-day="${escapeHtml(connection.Id)}" aria-label="Polling day for ${escapeHtml(connection.DisplayName)}"${disabledAttribute}>
+                    ${MARKET_DAYS.map(day => `<option value="${day.value}"${day.value === scheduleDay ? ' selected' : ''}>${day.label}</option>`).join('')}
+                </select>
+            </label>`
+        : '';
     const controls = `<label class="integration-polling-control">
+                        <span>Schedule</span>
+                        <select class="integration-select" data-integration-polling-schedule-type="${escapeHtml(connection.Id)}" aria-label="Polling schedule for ${escapeHtml(connection.DisplayName)}"${disabledAttribute}>${scheduleOptions}</select>
+                    </label>
+                    ${scheduleType === 'EveryNMinutes' ? `<label class="integration-polling-control">
                         <span>Poll every</span>
                         <input class="integration-number-input" type="number" min="${escapeHtml(descriptor?.MinimumPollingIntervalMinutes || 1)}" step="1" value="${escapeHtml(connection.PollingIntervalMinutes)}" data-integration-polling="${escapeHtml(connection.Id)}" aria-label="Polling interval for ${escapeHtml(connection.DisplayName)}"${disabledAttribute}>
                         <span>minutes</span>
-                    </label>
+                    </label>` : ''}
+                    ${scheduleValueControl}
+                    ${weeklyDayControl}
                     ${renderFeatureToggle({
                         id: `integration-market-hours-${connection.Id}`,
                         label: 'Only poll during market times',
@@ -626,7 +713,7 @@ function renderWizardBody() {
     } else {
         const deliveryDescription = connectionSyncMode(connection) === 'Webhook'
             ? 'receive updates through webhook events'
-            : `poll every ${connection.PollingIntervalMinutes} minutes`;
+            : `use ${pollingScheduleDescription(connection)}`;
         target.innerHTML = `<h5>Integration ready</h5><p>${escapeHtml(connection.DisplayName)} is configured to ${deliveryDescription}.</p><button type="button" class="action-btn primary" data-integration-close>Done</button>`;
     }
 
@@ -1157,6 +1244,25 @@ async function updateConnection(id, body) {
     }
 }
 
+function pollingSchedulePayload(input, typeOverride = null) {
+    const connectionId = input.dataset.integrationPollingScheduleType ||
+        input.dataset.integrationPollingScheduleValue ||
+        input.dataset.integrationPollingScheduleDay;
+    const connection = connections.find(item => String(item.Id) === String(connectionId));
+    const article = input.closest?.('[data-connection-id]');
+    const typeControl = article?.querySelector?.('[data-integration-polling-schedule-type]');
+    const dayControl = article?.querySelector?.('[data-integration-polling-schedule-day]');
+    const type = typeOverride || typeControl?.value || pollingScheduleType(connection);
+    const valueControl = article?.querySelector?.('[data-integration-polling-schedule-value]');
+    return {
+        PollingScheduleType: type,
+        PollingScheduleValue: typeOverride
+            ? pollingScheduleDefaultValue(typeOverride, connection)
+            : (valueControl?.value ?? pollingScheduleValue(connection, type)),
+        PollingScheduleDay: dayControl?.value || pollingScheduleDay(connection)
+    };
+}
+
 function showMarketHoursMessage(message, state = 'error') {
     const target = document.getElementById('integration-market-hours-message');
     if (!target) return;
@@ -1398,6 +1504,13 @@ export function setupIntegrations({ refresh: dashboardRefresh } = {}) {
         } else if (input.dataset.integrationPolling) {
             const minutes = Number(input.value);
             if (Number.isInteger(minutes) && minutes > 0) await updateConnection(input.dataset.integrationPolling, { PollingIntervalMinutes: minutes });
+        } else if (input.dataset.integrationPollingScheduleType) {
+            await updateConnection(
+                input.dataset.integrationPollingScheduleType,
+                pollingSchedulePayload(input, input.value));
+        } else if (input.dataset.integrationPollingScheduleValue || input.dataset.integrationPollingScheduleDay) {
+            const id = input.dataset.integrationPollingScheduleValue || input.dataset.integrationPollingScheduleDay;
+            await updateConnection(id, pollingSchedulePayload(input));
         } else if (input.dataset.integrationSyncMode) {
             await updateConnection(input.dataset.integrationSyncMode, { SyncMode: input.value });
         } else if (input.dataset.integrationEnabled) {

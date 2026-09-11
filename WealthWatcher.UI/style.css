@@ -1721,6 +1721,48 @@ header {
 .integration-sync-mode-control .integration-select:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.12); outline: none; }
 .integration-sync-mode-control .integration-select option { background: #162131; color: var(--text-main); }
 .integration-polling-control { display: flex; align-items: center; gap: 0.35rem; color: var(--text-muted); font-size: 0.8rem; }
+.integration-polling-control .integration-select,
+.integration-polling-value-control .integration-select {
+    appearance: none;
+    -webkit-appearance: none;
+    box-sizing: border-box;
+    min-height: 2.35rem;
+    padding: 0.55rem 2rem 0.55rem 0.65rem;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 7px;
+    background: rgba(2, 6, 23, 0.65);
+    color: var(--text-main);
+    cursor: pointer;
+    font: inherit;
+    color-scheme: dark;
+}
+.integration-polling-control .integration-select:focus,
+.integration-polling-value-control .integration-select:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.12); outline: none; }
+.integration-polling-control .integration-select option,
+.integration-polling-value-control .integration-select option { background: #162131; color: var(--text-main); }
+.integration-polling-value-control { display: flex; align-items: center; gap: 0.35rem; color: var(--text-muted); font-size: 0.8rem; }
+.integration-polling-value-control small { color: var(--text-muted); font-size: 0.7rem; }
+.integration-text-input,
+.integration-time-input {
+    box-sizing: border-box;
+    min-height: 2.35rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 7px;
+    background: rgba(2, 6, 23, 0.65);
+    color: var(--text-main);
+    font: inherit;
+    font-weight: 600;
+    color-scheme: dark;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.integration-text-input { width: 11rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.integration-time-input { width: 8rem; }
+.integration-text-input:focus,
+.integration-time-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.12); outline: none; }
+.integration-text-input:disabled,
+.integration-time-input:disabled,
+.integration-polling-value-control .integration-select:disabled { cursor: not-allowed; opacity: 0.45; }
 .integration-number-input {
     appearance: textfield; background: rgba(2, 6, 23, 0.65); border: 1px solid rgba(148, 163, 184, 0.28);
     border-radius: 7px; box-sizing: border-box; color: var(--text-main); font: inherit; font-weight: 600;
@@ -6369,6 +6411,7 @@ body.obfuscated h1 .obfuscate-val {
     }
 
     #settings-view .integration-polling-control,
+    #settings-view .integration-polling-value-control,
     #settings-view .integration-connection-controls .feature-toggle,
     #settings-view .integration-connection-actions {
         min-width: 0;
@@ -6380,6 +6423,17 @@ body.obfuscated h1 .obfuscate-val {
     #settings-view .integration-connection-controls .feature-toggle {
         justify-content: space-between;
         white-space: normal;
+    }
+
+    #settings-view .integration-polling-value-control {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    #settings-view .integration-polling-value-control .integration-text-input,
+    #settings-view .integration-polling-value-control .integration-time-input,
+    #settings-view .integration-polling-value-control .integration-select {
+        max-width: 100%;
     }
 
     #settings-view .integration-connection-actions {

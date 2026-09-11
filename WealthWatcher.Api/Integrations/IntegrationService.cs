@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using WealthWatcher.Api.Caching;
@@ -64,6 +65,9 @@ public sealed class IntegrationService(
             Status = IntegrationConnectionStatus.NeedsCredentials,
             SyncMode = IntegrationSyncMode.Polling,
             PollingIntervalMinutes = adapter.Descriptor.DefaultPollingIntervalMinutes,
+            PollingScheduleType = IntegrationPollingScheduleType.EveryNMinutes,
+            PollingScheduleValue = adapter.Descriptor.DefaultPollingIntervalMinutes
+                .ToString(CultureInfo.InvariantCulture),
             OptionsJson = JsonSerializer.Serialize(
                 adapter.Descriptor.OptionFields
                     .Where(field => field.DefaultValue is not null)
@@ -305,6 +309,53 @@ public sealed class IntegrationService(
             if (update.PollingIntervalMinutes.Value < adapter.Descriptor.MinimumPollingIntervalMinutes)
                 throw new ArgumentException($"Polling interval must be at least {adapter.Descriptor.MinimumPollingIntervalMinutes} minute(s).");
             connection.PollingIntervalMinutes = update.PollingIntervalMinutes.Value;
+            connection.PollingScheduleType = IntegrationPollingScheduleType.EveryNMinutes;
+            connection.PollingScheduleValue = update.PollingIntervalMinutes.Value
+                .ToString(CultureInfo.InvariantCulture);
+            connection.PollingScheduleDay = null;
+        }
+
+        if (update.PollingScheduleType is not null ||
+            update.PollingScheduleValue is not null ||
+            update.PollingScheduleDay is not null)
+        {
+            IntegrationPollingScheduleType scheduleType;
+            if (update.PollingScheduleType is null)
+                scheduleType = connection.PollingScheduleType;
+            else if (!TryParsePollingScheduleType(update.PollingScheduleType, out scheduleType))
+                throw new ArgumentException("Polling schedule type is not supported.");
+
+            var scheduleTypeChanged = update.PollingScheduleType is not null &&
+                                       scheduleType != connection.PollingScheduleType;
+            var scheduleValue = update.PollingScheduleValue ?? connection.PollingScheduleValue;
+            if (scheduleTypeChanged && string.IsNullOrWhiteSpace(update.PollingScheduleValue))
+                scheduleValue = DefaultPollingScheduleValue(scheduleType);
+            if (scheduleType == IntegrationPollingScheduleType.EveryNMinutes &&
+                string.IsNullOrWhiteSpace(scheduleValue))
+            {
+                scheduleValue = connection.PollingIntervalMinutes.ToString(CultureInfo.InvariantCulture);
+            }
+
+            var scheduleDay = scheduleType == IntegrationPollingScheduleType.WeeklyAt
+                ? update.PollingScheduleDay is not null
+                    ? ParsePollingScheduleDay(update.PollingScheduleDay)
+                    : connection.PollingScheduleDay
+                : null;
+            if (scheduleType == IntegrationPollingScheduleType.WeeklyAt && !scheduleDay.HasValue)
+                scheduleDay = DayOfWeek.Monday;
+            var normalizedValue = IntegrationPollingSchedule.NormalizeValue(
+                scheduleType,
+                scheduleValue,
+                scheduleDay,
+                connection.PollingIntervalMinutes,
+                adapter.Descriptor.MinimumPollingIntervalMinutes,
+                out var normalizedDay);
+
+            connection.PollingScheduleType = scheduleType;
+            connection.PollingScheduleValue = normalizedValue;
+            connection.PollingScheduleDay = normalizedDay;
+            if (scheduleType == IntegrationPollingScheduleType.EveryNMinutes)
+                connection.PollingIntervalMinutes = int.Parse(normalizedValue, CultureInfo.InvariantCulture);
         }
 
         if (update.OnlyPollDuringMarketTimes.HasValue)
@@ -833,7 +884,7 @@ public sealed class IntegrationService(
         var marketOpen = marketHours is not null && MarketHoursPolicy.IsWithinMarketHours(now, marketHours);
         var ids = connections
             .Where(connection => ignoreSchedule ||
-                                 (IsPollingDue(connection, now) &&
+                                 (IntegrationPollingSchedule.IsDue(connection, now) &&
                                   (!connection.OnlyPollDuringMarketTimes ||
                                    marketOpen)))
             .Select(connection => connection.Id)
@@ -858,10 +909,6 @@ public sealed class IntegrationService(
         CancellationToken cancellationToken = default) =>
         SyncConnectionAsync(connectionId, cancellationToken);
 
-    private static bool IsPollingDue(IntegrationConnection connection, DateTimeOffset now) =>
-        connection.LastSyncedAt is null ||
-        connection.LastSyncedAt <= now.AddMinutes(-connection.PollingIntervalMinutes);
-
     private static bool TryParseSyncMode(string value, out IntegrationSyncMode mode)
     {
         if (Enum.TryParse(value, ignoreCase: true, out mode) &&
@@ -878,6 +925,51 @@ public sealed class IntegrationService(
         mode = default;
         return false;
     }
+
+    private static bool TryParsePollingScheduleType(
+        string? value,
+        out IntegrationPollingScheduleType scheduleType)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            scheduleType = IntegrationPollingScheduleType.EveryNMinutes;
+            return false;
+        }
+
+        if (Enum.TryParse(value, ignoreCase: true, out scheduleType) &&
+            Enum.IsDefined(scheduleType))
+            return true;
+
+        if (value.Equals("Interval", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("Every", StringComparison.OrdinalIgnoreCase))
+        {
+            scheduleType = IntegrationPollingScheduleType.EveryNMinutes;
+            return true;
+        }
+
+        scheduleType = default;
+        return false;
+    }
+
+    private static DayOfWeek ParsePollingScheduleDay(string value)
+    {
+        if (Enum.TryParse<DayOfWeek>(value, ignoreCase: true, out var day) &&
+            Enum.IsDefined(day))
+            return day;
+
+        throw new ArgumentException("Weekly polling schedule day must be a valid weekday.");
+    }
+
+    private static string DefaultPollingScheduleValue(IntegrationPollingScheduleType scheduleType) =>
+        scheduleType switch
+        {
+            IntegrationPollingScheduleType.Cron => "0 * * * *",
+            IntegrationPollingScheduleType.HourlyAt => "0",
+            IntegrationPollingScheduleType.HourlyOnTheHour => string.Empty,
+            IntegrationPollingScheduleType.DailyAt => "08:00",
+            IntegrationPollingScheduleType.WeeklyAt => "08:00",
+            _ => string.Empty
+        };
 
     private async Task<IntegrationConnection?> LoadConnectionAsync(
         Guid connectionId,
@@ -964,6 +1056,11 @@ public sealed class IntegrationService(
         Status = connection.Status.ToString(),
         SyncMode = connection.SyncMode.ToString(),
         PollingIntervalMinutes = connection.PollingIntervalMinutes,
+        PollingScheduleType = connection.PollingScheduleType.ToString(),
+        PollingScheduleValue = connection.PollingScheduleType == IntegrationPollingScheduleType.EveryNMinutes
+            ? connection.PollingIntervalMinutes.ToString(CultureInfo.InvariantCulture)
+            : connection.PollingScheduleValue,
+        PollingScheduleDay = connection.PollingScheduleDay?.ToString(),
         OnlyPollDuringMarketTimes = connection.OnlyPollDuringMarketTimes,
         LastTestedAt = connection.LastTestedAt,
         LastSyncedAt = connection.LastSyncedAt,
@@ -1117,6 +1214,9 @@ public sealed class IntegrationConnectionUpdate
     public bool? Enabled { get; init; }
     public string? SyncMode { get; init; }
     public int? PollingIntervalMinutes { get; init; }
+    public string? PollingScheduleType { get; init; }
+    public string? PollingScheduleValue { get; init; }
+    public string? PollingScheduleDay { get; init; }
     public bool? OnlyPollDuringMarketTimes { get; init; }
     public Dictionary<string, string>? Options { get; init; }
 }
@@ -1131,6 +1231,9 @@ public sealed class IntegrationConnectionResponse
     public string Status { get; init; } = string.Empty;
     public string SyncMode { get; init; } = nameof(IntegrationSyncMode.Polling);
     public int PollingIntervalMinutes { get; init; }
+    public string PollingScheduleType { get; init; } = nameof(IntegrationPollingScheduleType.EveryNMinutes);
+    public string PollingScheduleValue { get; init; } = string.Empty;
+    public string? PollingScheduleDay { get; init; }
     public bool OnlyPollDuringMarketTimes { get; init; }
     public bool HasCredentials { get; init; }
     public DateTimeOffset? LastTestedAt { get; init; }

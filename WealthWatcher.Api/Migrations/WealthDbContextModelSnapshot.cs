@@ -473,6 +473,16 @@ namespace WealthWatcher.Api.Migrations
                     b.Property<int>("PollingIntervalMinutes")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("PollingScheduleDay")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PollingScheduleType")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PollingScheduleValue")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 

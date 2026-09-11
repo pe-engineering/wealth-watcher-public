@@ -1792,7 +1792,21 @@ function handleWrite(path, method, body, searchParams) {
         const providerKey = decodeURIComponent(providerMatch[1]);
         const descriptor = demoState.integrationCatalog.find(item => item.Key === providerKey);
         if (!descriptor) return errorResponse(`Integration provider '${providerKey}' was not found.`);
-        const integration = { Id: nextId('connection'), ProviderKey: providerKey, DisplayName: descriptor.DisplayName, Status: 'NeedsCredentials', SyncMode: 'Polling', PollingIntervalMinutes: descriptor.MinimumPollingIntervalMinutes || 60, Enabled: false, OnlyPollDuringMarketTimes: true, Accounts: [] };
+        const defaultPollingInterval = descriptor.MinimumPollingIntervalMinutes || 60;
+        const integration = {
+            Id: nextId('connection'),
+            ProviderKey: providerKey,
+            DisplayName: descriptor.DisplayName,
+            Status: 'NeedsCredentials',
+            SyncMode: 'Polling',
+            PollingIntervalMinutes: defaultPollingInterval,
+            PollingScheduleType: 'EveryNMinutes',
+            PollingScheduleValue: String(defaultPollingInterval),
+            PollingScheduleDay: null,
+            Enabled: false,
+            OnlyPollDuringMarketTimes: true,
+            Accounts: []
+        };
         demoState.integrations.push(integration);
         return response(clone(integration), 201);
     }

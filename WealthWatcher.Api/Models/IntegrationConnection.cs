@@ -25,6 +25,16 @@ public enum IntegrationSyncMode
     Webhook = 2
 }
 
+public enum IntegrationPollingScheduleType
+{
+    EveryNMinutes = 1,
+    Cron = 2,
+    HourlyAt = 3,
+    HourlyOnTheHour = 4,
+    DailyAt = 5,
+    WeeklyAt = 6
+}
+
 /// <summary>
 /// Installed adapter/provider identity. The adapter code is a boundary value;
 /// local relationships use Id.
@@ -56,6 +66,9 @@ public sealed class IntegrationConnection
     public IntegrationConnectionStatus Status { get; set; } = IntegrationConnectionStatus.NeedsCredentials;
     public IntegrationSyncMode SyncMode { get; set; } = IntegrationSyncMode.Polling;
     public int PollingIntervalMinutes { get; set; } = 180;
+    public IntegrationPollingScheduleType PollingScheduleType { get; set; } = IntegrationPollingScheduleType.EveryNMinutes;
+    public string PollingScheduleValue { get; set; } = string.Empty;
+    public DayOfWeek? PollingScheduleDay { get; set; }
     public bool OnlyPollDuringMarketTimes { get; set; }
     public string OptionsJson { get; set; } = "{}";
     public string CredentialsCiphertext { get; set; } = string.Empty;

@@ -178,10 +178,13 @@ public class WealthDbContext : DbContext
             entity.Property(e => e.Kind).HasConversion<int>().IsRequired();
             entity.Property(e => e.Status).HasConversion<int>().IsRequired();
             entity.Property(e => e.SyncMode).HasConversion<int>().IsRequired();
+            entity.Property(e => e.PollingScheduleType).HasConversion<int>().IsRequired();
             entity.Property(e => e.DisplayName).IsRequired();
             entity.Property(e => e.OptionsJson).IsRequired();
             entity.Property(e => e.CredentialsCiphertext).IsRequired();
             entity.Property(e => e.PollingIntervalMinutes).IsRequired();
+            entity.Property(e => e.PollingScheduleValue).IsRequired();
+            entity.Property(e => e.PollingScheduleDay).HasConversion<int?>();
             entity.Property(e => e.OnlyPollDuringMarketTimes).IsRequired();
             entity.HasOne(e => e.IntegrationProvider)
                 .WithMany(e => e.Connections)
