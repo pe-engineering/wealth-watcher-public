@@ -115,6 +115,7 @@ public class WealthDbContext : DbContext
                 .HasForeignKey(e => e.AssetId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => new { e.AssetId, e.Date, e.Time });
+#pragma warning disable CS0618 // Legacy discriminator values must remain mapped for existing data.
             entity.HasDiscriminator<string>("Discriminator")
                 .HasValue<CashAssetValueEntry>("CashAssetValueEntry")
                 .HasValue<CashEntry>("CashEntry")
@@ -122,6 +123,7 @@ public class WealthDbContext : DbContext
                 .HasValue<InvestmentEntry>("InvestmentEntry")
                 .HasValue<PropertyAssetValueEntry>("PropertyAssetValueEntry")
                 .HasValue<PropertyEntry>("PropertyEntry");
+#pragma warning restore CS0618
         });
 
         modelBuilder.Entity<PropertyAssetValueEntry>()
