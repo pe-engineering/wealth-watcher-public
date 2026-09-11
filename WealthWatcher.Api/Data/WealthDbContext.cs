@@ -115,6 +115,7 @@ public class WealthDbContext : DbContext
                 .HasForeignKey(e => e.AssetId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => new { e.AssetId, e.Date, e.Time });
+#pragma warning disable CS0618 // Legacy discriminator values must remain mapped for existing data.
             entity.HasDiscriminator<string>("Discriminator")
                 .HasValue<CashAssetValueEntry>("CashAssetValueEntry")
                 .HasValue<CashEntry>("CashEntry")
@@ -122,6 +123,7 @@ public class WealthDbContext : DbContext
                 .HasValue<InvestmentEntry>("InvestmentEntry")
                 .HasValue<PropertyAssetValueEntry>("PropertyAssetValueEntry")
                 .HasValue<PropertyEntry>("PropertyEntry");
+#pragma warning restore CS0618
         });
 
         modelBuilder.Entity<PropertyAssetValueEntry>()
@@ -178,10 +180,13 @@ public class WealthDbContext : DbContext
             entity.Property(e => e.Kind).HasConversion<int>().IsRequired();
             entity.Property(e => e.Status).HasConversion<int>().IsRequired();
             entity.Property(e => e.SyncMode).HasConversion<int>().IsRequired();
+            entity.Property(e => e.PollingScheduleType).HasConversion<int>().IsRequired();
             entity.Property(e => e.DisplayName).IsRequired();
             entity.Property(e => e.OptionsJson).IsRequired();
             entity.Property(e => e.CredentialsCiphertext).IsRequired();
             entity.Property(e => e.PollingIntervalMinutes).IsRequired();
+            entity.Property(e => e.PollingScheduleValue).IsRequired();
+            entity.Property(e => e.PollingScheduleDay).HasConversion<int?>();
             entity.Property(e => e.OnlyPollDuringMarketTimes).IsRequired();
             entity.HasOne(e => e.IntegrationProvider)
                 .WithMany(e => e.Connections)

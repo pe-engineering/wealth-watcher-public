@@ -271,6 +271,35 @@ test('integration catalog allows additional named instances of a connected partn
     assert.doesNotMatch(elements.get('integration-market-hours').innerHTML, /Save market hours/);
 });
 
+test('polling controls expose every supported schedule type and render a weekly schedule', async () => {
+    const connection = integrationConnections[2];
+    const previousSchedule = {
+        PollingScheduleType: connection.PollingScheduleType,
+        PollingScheduleValue: connection.PollingScheduleValue,
+        PollingScheduleDay: connection.PollingScheduleDay
+    };
+
+    try {
+        connection.PollingScheduleType = 'WeeklyAt';
+        connection.PollingScheduleValue = '09:30';
+        connection.PollingScheduleDay = 'Friday';
+        await loadIntegrations();
+
+        const markup = elements.get('integration-connections').innerHTML;
+        assert.match(markup, /value="EveryNMinutes"/);
+        assert.match(markup, /value="Cron"/);
+        assert.match(markup, /value="HourlyAt"/);
+        assert.match(markup, /value="HourlyOnTheHour"/);
+        assert.match(markup, /value="DailyAt"/);
+        assert.match(markup, /value="WeeklyAt" selected/);
+        assert.match(markup, /type="time" value="09:30"/);
+        assert.match(markup, /data-integration-polling-schedule-day="connection-3"/);
+        assert.match(markup, /value="Friday" selected/);
+    } finally {
+        Object.assign(connection, previousSchedule);
+    }
+});
+
 test('disabled relay status explains that polling remains available', async () => {
     const previousRelayResponse = webhookRelayResponse;
     webhookRelayResponse = { Enabled: false, Connected: false, LastConnectedAt: null, LastMessageAt: null, LastError: null };

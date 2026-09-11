@@ -173,10 +173,21 @@ const {
     aggregateAssetCardHistory,
     buildAssetCardChartSeries,
     buildPropertyInsightContributors,
+    formatDashboardTooltipTitle,
     getDashboardAssetName,
     getActiveUnclassifiedAssetCount,
     renderUnclassifiedAssetBanner
 } = await import('./Dashboard.js');
+
+test('Day dashboard tooltip titles use a readable local hourly interval', () => {
+    const title = formatDashboardTooltipTitle(
+        '2026-09-11T06:00:00.0000000+01:00',
+        '1D');
+
+    assert.match(title, /^\d{2}:\d{2}–\d{2}:\d{2}/);
+    assert.doesNotMatch(title, /T|\.0000000|[+-]\d{2}:\d{2}/);
+    assert.match(formatDashboardTooltipTitle('2026-09-11', '1M'), /11 Sep(?:t)? 2026/);
+});
 
 test('asset-card chart aggregation uses range-aware closing buckets and prefers observations', () => {
     const history = Array.from({ length: 15 }, (_, index) => ({

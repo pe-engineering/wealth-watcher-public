@@ -12,7 +12,7 @@ External partners implement the application-owned `IIntegrationAdapter` contract
 2. Discover external accounts.
 3. Pull account values and optional position details.
 
-Connections, discovered accounts, asset allocations, polling intervals, and sync status are stored in the database. The UI enables an integration through the following lifecycle:
+Connections, discovered accounts, asset allocations, polling schedules, and sync status are stored in the database. Polling supports a fixed minute interval, five-field cron, hourly minute offsets, hourly on-the-hour, daily, and weekly wall-clock schedules. The UI enables an integration through the following lifecycle:
 
 ```mermaid
 flowchart LR
@@ -49,7 +49,7 @@ flowchart LR
 
 The private API always initiates the WebSocket connection. The relay authenticates that connection with a private pairing id and token, accepts only provider-specific requests that pass the configured validator, and queues an intentionally generic envelope. Acknowledgements are sent only after processing succeeds or an event is safely ignored. If the API is offline or synchronization fails transiently, the SQLite queue retries the event. The API's optional relay switch is persisted in `AppPreferences`; it can pause and resume the live relay connection without changing deployment secrets. The Integrations screen can also send a diagnostic event through the relay queue and require an API acknowledgement. A relay host is paired with one self-hosted Wealth Watcher deployment; the pairing id is internal and is not included in provider webhook URLs.
 
-Webhook events are triggers rather than a second source of truth: `WebhookDispatcher` resolves a configured connection and calls the same `SyncConnectionAsync` path used by explicit and scheduled syncs. Each connection selects exactly one automatic update mode, `Polling` or `Webhook`; the scheduled worker only considers polling-mode connections and the dispatcher only considers webhook-mode connections. Explicit manual sync remains available. Provider capability metadata is exposed through `IntegrationDescriptor.SupportsWebhooks`; SnapTrade is currently the only adapter marked as supporting it.
+Webhook events are triggers rather than a second source of truth: `WebhookDispatcher` resolves a configured connection and calls the same `SyncConnectionAsync` path used by explicit and scheduled syncs. Each connection selects exactly one automatic update mode, `Polling` or `Webhook`; the scheduled worker only considers polling-mode connections and evaluates their schedule using the API host's local time, while the dispatcher only considers webhook-mode connections. Explicit manual sync remains available. Provider capability metadata is exposed through `IntegrationDescriptor.SupportsWebhooks`; SnapTrade is currently the only adapter marked as supporting it.
 
 The relay's provider handler boundary keeps signature and payload rules out of the generic delivery code. The initial SnapTrade handler validates the `Signature` HMAC using the configured consumer key, applies a short event timestamp window, and forwards only the signature header rather than arbitrary request headers. Provider-facing routes use `/webhooks/{provider}`; the relay host, rather than a path segment, identifies the deployment. The relay must be deployed behind HTTPS/WSS in production; it does not make the private API publicly reachable.
 

@@ -377,6 +377,58 @@ public sealed class IntegrationServiceTests
     }
 
     [Fact]
+    public async Task Polling_schedule_settings_are_normalized_and_returned()
+    {
+        var options = new DbContextOptionsBuilder<WealthDbContext>()
+            .UseInMemoryDatabase($"integration-schedule-settings-tests-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new WealthDbContext(options);
+        var provider = DataProtectionProvider.Create("wealth-watcher-integration-schedule-settings-tests");
+        var service = CreateService(
+            db,
+            new IntegrationRegistry([new TestAdapter()]),
+            new IntegrationCredentialProtector(provider));
+
+        var connection = await service.CreateConnectionAsync("test", "Schedule settings connection");
+        var weekly = await service.UpdateConnectionAsync(connection.Id, new IntegrationConnectionUpdate
+        {
+            PollingScheduleType = nameof(IntegrationPollingScheduleType.WeeklyAt),
+            PollingScheduleValue = "09:05",
+            PollingScheduleDay = nameof(DayOfWeek.Friday)
+        });
+
+        Assert.NotNull(weekly);
+        Assert.Equal(nameof(IntegrationPollingScheduleType.WeeklyAt), weekly!.PollingScheduleType);
+        Assert.Equal("09:05", weekly.PollingScheduleValue);
+        Assert.Equal(nameof(DayOfWeek.Friday), weekly.PollingScheduleDay);
+
+        var stored = await db.IntegrationConnections.SingleAsync();
+        Assert.Equal(IntegrationPollingScheduleType.WeeklyAt, stored.PollingScheduleType);
+        Assert.Equal("09:05", stored.PollingScheduleValue);
+        Assert.Equal(DayOfWeek.Friday, stored.PollingScheduleDay);
+
+        var daily = await service.UpdateConnectionAsync(connection.Id, new IntegrationConnectionUpdate
+        {
+            PollingScheduleType = nameof(IntegrationPollingScheduleType.DailyAt)
+        });
+
+        Assert.NotNull(daily);
+        Assert.Equal(nameof(IntegrationPollingScheduleType.DailyAt), daily!.PollingScheduleType);
+        Assert.Equal("08:00", daily.PollingScheduleValue);
+        Assert.Null(daily.PollingScheduleDay);
+
+        var interval = await service.UpdateConnectionAsync(connection.Id, new IntegrationConnectionUpdate
+        {
+            PollingIntervalMinutes = 15
+        });
+
+        Assert.NotNull(interval);
+        Assert.Equal(nameof(IntegrationPollingScheduleType.EveryNMinutes), interval!.PollingScheduleType);
+        Assert.Equal("15", interval.PollingScheduleValue);
+        Assert.Null(interval.PollingScheduleDay);
+    }
+
+    [Fact]
     public async Task Integration_instances_keep_provider_links_separate()
     {
         var options = new DbContextOptionsBuilder<WealthDbContext>()
