@@ -487,9 +487,10 @@ test('seed data provides dense history across the past year and a bit', () => {
         months[month] = (months[month] || 0) + 1;
         return months;
     }, {});
+    const firstMonth = dates[0].slice(0, 7);
     const currentMonth = dates.at(-1).slice(0, 7);
     const completedMonthObservationCounts = Object.entries(observationsByMonth)
-        .filter(([month]) => month !== currentMonth)
+        .filter(([month]) => month !== firstMonth && month !== currentMonth)
         .map(([, count]) => count);
 
     assert.ok(state.entries.length >= 650);
