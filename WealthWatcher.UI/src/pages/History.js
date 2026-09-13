@@ -3,7 +3,12 @@ import { fetchFreshStrict, API_BASE_URL } from '../api/apiClient.js';
 import { setPageLoading } from '../components/PageLoading.js';
 import { PAGE_STATUS, setPageStatus } from '../components/PageState.js';
 import { createPageRequestController } from '../components/PageRequest.js';
-import { bindPeriodPicker, normalizePeriod, syncPeriodPicker } from '../components/PeriodPicker.js';
+import {
+    bindPeriodPicker,
+    normalizePeriod,
+    syncAggregatePeriodPickers
+} from '../components/PeriodPicker.js';
+import { applyAggregatePeriodSelection } from '../utils/aggregatePeriodPreference.js';
 import { chartDataRows, renderAccessibleChartData } from '../components/AccessibleChartData.js';
 import { normalizeTimelineEntries } from '../components/TimelineModel.js';
 import { compactCurrencyFormatter, currencyFormatter, percentFormatter } from '../utils/formatters.js';
@@ -11,20 +16,21 @@ import { escapeHtml, safeCssColor } from '../utils/html.js';
 
 let historyChartInstances = [];
 let historySnapshot = null;
-let historyPeriod = '1M';
 let showHistoryTrend = false;
 let historyControlsBound = false;
 let historyPageState = PAGE_STATUS.LOADING;
 const historyRequests = createPageRequestController();
 
-const HISTORY_PERIODS = ['1D', '1W', '1M', '3M', 'YTD', 'MAX'];
 export const HISTORY_TREND_STORAGE_KEY = 'wealthwatcher_history_show_trend';
 
 export async function loadHistoryView() {
     const storedTrend = readStoredHistoryTrend();
     if (storedTrend !== null) showHistoryTrend = storedTrend;
+    const selectedPeriod = normalizePeriod(store.state.currentPeriod);
+    store.state.currentPeriod = selectedPeriod;
+    syncAggregatePeriodPickers(selectedPeriod);
     bindHistoryControls();
-    return loadHistoryPeriod(historyPeriod);
+    return loadHistoryPeriod(selectedPeriod);
 }
 
 function getHistoryTrendStorage() {
@@ -67,6 +73,8 @@ export function setHistoryTrendPreference(value, storage = getHistoryTrendStorag
 
 async function loadHistoryPeriod(period) {
     period = normalizePeriod(period);
+    store.state.currentPeriod = period;
+    syncAggregatePeriodPickers(period);
     const requestId = historyRequests.next();
     historyPageState = PAGE_STATUS.LOADING;
     historySnapshot = null;
@@ -86,22 +94,31 @@ async function loadHistoryPeriod(period) {
             },
             data: category.Aggregate || category
         }));
-        if (!historyRequests.isCurrent(requestId)) return;
+        if (!isCurrentHistoryRequest(requestId, period)) return;
 
         historySnapshot = buildHistorySnapshot(results);
         renderHistoryView();
+        store.state.historyLoadedPeriod = period;
+        store.state.isHistoryLoaded = true;
     } catch {
-        if (!historyRequests.isCurrent(requestId)) return;
+        if (!isCurrentHistoryRequest(requestId, period)) return;
         historySnapshot = null;
         historyPageState = PAGE_STATUS.ERROR;
         clearHistoryLiveContent();
         renderHistoryPageState();
+        store.state.historyLoadedPeriod = period;
+        store.state.isHistoryLoaded = true;
     } finally {
-        if (historyRequests.isCurrent(requestId)) {
+        if (isCurrentHistoryRequest(requestId, period)) {
             setPageLoading('history-view', false);
             renderHistoryPageState();
         }
     }
+}
+
+function isCurrentHistoryRequest(requestId, period) {
+    return historyRequests.isCurrent(requestId)
+        && normalizePeriod(store.state.currentPeriod) === period;
 }
 
 export function buildHistorySnapshot(results) {
@@ -302,7 +319,7 @@ function createHistoryErrorState(view) {
     retry.type = 'button';
     retry.className = 'action-btn page-state-retry';
     retry.textContent = 'Try again';
-    retry.addEventListener?.('click', () => void loadHistoryPeriod(historyPeriod));
+    retry.addEventListener?.('click', () => void loadHistoryPeriod(store.state.currentPeriod));
 
     errorState.appendChild?.(title);
     errorState.appendChild?.(message);
@@ -579,12 +596,12 @@ function bindHistoryControls() {
     if (historyControlsBound) return;
 
     bindPeriodPicker('history-range-picker', {
-        selectedPeriod: historyPeriod,
+        selectedPeriod: store.state.currentPeriod,
         onChange: async period => {
-            if (!HISTORY_PERIODS.includes(period)) return;
-            historyPeriod = period;
+            const nextPeriod = applyAggregatePeriodSelection(period, store.state);
+            syncAggregatePeriodPickers(nextPeriod);
             updateRangeButtonState();
-            await loadHistoryPeriod(period);
+            await loadHistoryPeriod(nextPeriod);
         }
     });
 
@@ -601,7 +618,7 @@ function bindHistoryControls() {
 }
 
 function updateRangeButtonState() {
-    syncPeriodPicker('history-range-picker', historyPeriod);
+    syncAggregatePeriodPickers(store.state.currentPeriod);
 
     const trendButton = document.getElementById('history-trend-toggle');
     if (trendButton) {
@@ -672,10 +689,11 @@ function monthTickCallback(value, index, ticks) {
 
 function historyTickCallback(value, index, ticks) {
     const dateValue = this.getLabelForValue(value);
-    if (historyPeriod === '1D') {
+    const selectedPeriod = normalizePeriod(store.state.currentPeriod);
+    if (selectedPeriod === '1D') {
         return formatTimeAxisDate(dateValue);
     }
-    if (historyPeriod === '1W' || historyPeriod === '1M' || historyPeriod === '3M') {
+    if (selectedPeriod === '1W' || selectedPeriod === '1M' || selectedPeriod === '3M') {
         return formatDayAxisDate(dateValue);
     }
     return monthTickCallback.call(this, value, index, ticks);

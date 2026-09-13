@@ -1,5 +1,6 @@
 import { store } from '../store/store.js';
 import { renderFireView } from '../pages/FireTracker.js';
+import { loadDashboard } from '../pages/Dashboard.js';
 import { loadHistoryView } from '../pages/History.js';
 import { loadCalendarView } from '../pages/Calendar.js';
 import { loadForecastView } from '../pages/ForecastV2.js';
@@ -10,6 +11,7 @@ import { expandPane, initAllCollapsiblePanes } from '../components/CollapsiblePa
 import { populateFireFeatureSettings } from '../components/FireSettings.js';
 import { populateMilestoneSettings } from '../components/Milestones.js';
 import { applyFeatureVisibility, getFeatureKeyForRoute, isFeatureEnabled } from '../utils/featureFlags.js';
+import { normalizePeriod } from '../components/PeriodPicker.js';
 
 export function setupRouter() {
     window.addEventListener('hashchange', handleRouting);
@@ -94,6 +96,30 @@ export function shouldRedirectDisabledFeatureRoute(route, featureKey, enabled) {
 }
 
 /**
+ * Page loaded flags predate the shared aggregate period. Keep them as a
+ * cheap fast path, but only treat a page as current when its last accepted
+ * period matches the canonical selection.
+ */
+export function isAggregatePeriodLoaded(isLoaded, loadedPeriod, currentPeriod) {
+    return isLoaded === true
+        && loadedPeriod === normalizePeriod(currentPeriod);
+}
+
+function isDashboardCurrent() {
+    return isAggregatePeriodLoaded(
+        store.state.isDashboardLoaded,
+        store.state.dashboardLoadedPeriod,
+        store.state.currentPeriod);
+}
+
+function isHistoryCurrent() {
+    return isAggregatePeriodLoaded(
+        store.state.isHistoryLoaded,
+        store.state.historyLoadedPeriod,
+        store.state.currentPeriod);
+}
+
+/**
  * Removes a one-time settings panel target after it has been revealed.
  * This prevents the deep-link from overriding the pane's saved state on refresh.
  * @param {string} hash
@@ -171,8 +197,13 @@ export function handleRouting() {
         if(fireView) fireView.classList.add('active');
         if(navFire) navFire.classList.add('active');
         
-        if (store.state.isDashboardLoaded) {
+        if (isDashboardCurrent()) {
             renderFireView();
+        } else {
+            void loadDashboard().then(() => {
+                const activeRoute = (window.location.hash || '#dashboard').split('?')[0];
+                if (activeRoute === '#fire' && isDashboardCurrent()) renderFireView();
+            });
         }
     } else if (route === '#budget') {
         const budgetView = document.getElementById('budget-view');
@@ -191,7 +222,7 @@ export function handleRouting() {
         if(historyView) historyView.classList.add('active');
         if(navHistory) navHistory.classList.add('active');
         
-        if (!store.state.isHistoryLoaded) {
+        if (!isHistoryCurrent()) {
             loadHistoryView();
             store.state.isHistoryLoaded = true;
         }
@@ -240,6 +271,7 @@ export function handleRouting() {
         const navDashboard = document.getElementById('nav-dashboard');
         if(dashboardView) dashboardView.classList.add('active');
         if(navDashboard) navDashboard.classList.add('active');
+        if (!isDashboardCurrent()) void loadDashboard();
     }
 
     syncActiveNavState();

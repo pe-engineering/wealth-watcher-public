@@ -72,6 +72,8 @@ const state = {
         assets: [],
         assetsLoaded: false,
         currentPeriod: '1M',
+        dashboardLoadedPeriod: null,
+        historyLoadedPeriod: null,
         auditPage: 1,
         isDashboardLoaded: false,
         isHistoryLoaded: false,
@@ -113,6 +115,8 @@ export const store = {
         this.apiInflight = {};
         this.state.isDashboardLoaded = false;
         this.state.isHistoryLoaded = false;
+        this.state.dashboardLoadedPeriod = null;
+        this.state.historyLoadedPeriod = null;
         this.state.isCalendarLoaded = false;
         this.state.isForecastLoaded = false;
         this.state.fireStatusForecast = { key: '', status: 'idle', target: 0, data: null, date: null };
