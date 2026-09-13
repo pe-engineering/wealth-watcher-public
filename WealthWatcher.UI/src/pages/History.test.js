@@ -134,6 +134,7 @@ const {
     loadHistoryView,
     setHistoryTrendPreference
 } = await import('./History.js');
+const { AGGREGATE_PERIOD_STORAGE_KEY } = await import('../utils/aggregatePeriodPreference.js');
 
 test('history charts use the dashboard standard 1M period by default', async () => {
     store.clearCache();
@@ -148,6 +149,7 @@ test('history charts use the dashboard standard 1M period by default', async () 
     assert.deepEqual(requestedUrls, [
         'http://localhost:5000/api/history?period=1M'
     ]);
+    assert.equal(store.state.historyLoadedPeriod, '1M');
 });
 
 test('history exposes an explicit empty page state when no history is returned', async () => {
@@ -181,6 +183,7 @@ test('history exposes an actionable error state when the request fails', async (
 
 test('history range buttons reload the selected standard period', async () => {
     store.clearCache();
+    localStorageStore.clear();
     requestedUrls.length = 0;
 
     await elements.get('history-range-1d').dispatchEvent({ type: 'click' });
@@ -188,6 +191,8 @@ test('history range buttons reload the selected standard period', async () => {
     assert.deepEqual(requestedUrls, [
         'http://localhost:5000/api/history?period=1D'
     ]);
+    assert.equal(store.state.currentPeriod, '1D');
+    assert.equal(localStorageStore.get(AGGREGATE_PERIOD_STORAGE_KEY), '1D');
 });
 
 test('history values use the shared class-based obfuscation styling', async () => {

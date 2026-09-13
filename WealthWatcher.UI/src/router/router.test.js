@@ -14,6 +14,7 @@ const {
     getDeprecatedRouteRedirect,
     getLegacyApplicationRedirect,
     getSettingsPanelTarget,
+    isAggregatePeriodLoaded,
     revealSettingsPanel,
     shouldRedirectDisabledFeatureRoute
 } = await import('./router.js');
@@ -49,6 +50,13 @@ test('disabled Budget stays on its route while other disabled feature routes fal
     assert.equal(shouldRedirectDisabledFeatureRoute('#forecast', 'forecast', false), true);
     assert.equal(shouldRedirectDisabledFeatureRoute('#forecast', 'forecast', true), false);
     assert.equal(shouldRedirectDisabledFeatureRoute('#dashboard', null, false), false);
+});
+
+test('route freshness requires a loaded period that matches the shared selection', () => {
+    assert.equal(isAggregatePeriodLoaded(true, '1W', '1W'), true);
+    assert.equal(isAggregatePeriodLoaded(true, '1W', '1M'), false);
+    assert.equal(isAggregatePeriodLoaded(false, '1W', '1W'), false);
+    assert.equal(isAggregatePeriodLoaded(true, '1D', '1H'), true);
 });
 
 test('legacy Application settings hashes redirect to the dedicated route', () => {

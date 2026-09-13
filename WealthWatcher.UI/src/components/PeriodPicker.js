@@ -1,4 +1,8 @@
 export const STANDARD_PERIODS = Object.freeze(['1D', '1W', '1M', '3M', 'YTD', 'MAX']);
+export const AGGREGATE_PERIOD_PICKER_CONTAINERS = Object.freeze([
+    'period-picker',
+    'history-range-picker'
+]);
 
 export function normalizePeriod(period, fallback = '1M') {
     const normalized = String(period || '').toUpperCase();
@@ -56,6 +60,18 @@ export function syncPeriodPicker(container, selectedPeriod) {
         setActive(button, selected);
         button.setAttribute?.('aria-pressed', String(selected));
     });
+}
+
+/**
+ * Keeps the Dashboard and History controls visually and accessibly aligned
+ * while allowing each page to retain its existing route-local markup.
+ */
+export function syncAggregatePeriodPickers(selectedPeriod) {
+    const normalized = normalizePeriod(selectedPeriod);
+    AGGREGATE_PERIOD_PICKER_CONTAINERS.forEach(container => {
+        syncPeriodPicker(container, normalized);
+    });
+    return normalized;
 }
 
 /**

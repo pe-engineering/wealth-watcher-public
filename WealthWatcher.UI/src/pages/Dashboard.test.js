@@ -363,6 +363,7 @@ test('Dashboard period selection reloads aggregates for 1D', async () => {
         await new Promise(resolve => setTimeout(resolve, 20));
 
         assert.equal(store.state.currentPeriod, '1D');
+        assert.equal(store.state.dashboardLoadedPeriod, '1D');
         assert.ok(!oneMonthButton.className.split(' ').includes('active'));
         assert.ok(oneDayButton.className.split(' ').includes('active'));
         assert.ok(fetchRequests.some(url => url.includes('/dashboard?period=1D')));

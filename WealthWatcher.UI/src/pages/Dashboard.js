@@ -6,7 +6,15 @@ import { requestConfirmation, requestNotification } from '../components/Confirma
 import { showToast } from '../components/Toast.js';
 import { setPageLoading } from '../components/PageLoading.js';
 import { PAGE_STATUS, setPageStatus } from '../components/PageState.js';
-import { bindPeriodPicker, normalizePeriod } from '../components/PeriodPicker.js';
+import {
+    bindPeriodPicker,
+    normalizePeriod,
+    syncAggregatePeriodPickers
+} from '../components/PeriodPicker.js';
+import {
+    applyAggregatePeriodSelection,
+    hydrateAggregatePeriodPreference
+} from '../utils/aggregatePeriodPreference.js';
 import { escapeHtml, safeCssColor } from '../utils/html.js';
 import {
     buildFireStatusViewModel,
@@ -197,11 +205,13 @@ async function readApiError(response, fallback) {
 }
 
 export function setupPeriodListeners() {
-    store.state.currentPeriod = normalizePeriod(store.state.currentPeriod);
+    const selectedPeriod = hydrateAggregatePeriodPreference(store.state);
+    syncAggregatePeriodPickers(selectedPeriod);
     bindPeriodPicker('period-picker', {
-        selectedPeriod: store.state.currentPeriod,
+        selectedPeriod,
         onChange: async period => {
-            store.state.currentPeriod = normalizePeriod(period);
+            const nextPeriod = applyAggregatePeriodSelection(period, store.state);
+            syncAggregatePeriodPickers(nextPeriod);
             store.state.isDashboardLoaded = false;
             await loadDashboard({ force: true });
             store.state.isDashboardLoaded = true;
@@ -280,6 +290,11 @@ export function loadDashboard({ force = false } = {}) {
         } catch (error) {
             dashboardPageState = PAGE_STATUS.ERROR;
             dashboardPageError = error;
+            const selectedPeriod = normalizePeriod(store.state.currentPeriod);
+            if (dashboardLoadPeriod === selectedPeriod) {
+                store.state.dashboardLoadedPeriod = selectedPeriod;
+                store.state.isDashboardLoaded = true;
+            }
             console.error('Dashboard load failed:', error);
         }
     })().finally(() => {
@@ -326,6 +341,8 @@ async function loadDashboardInternal() {
         Array.isArray(data?.Data) && data.Data.length > 0);
     if (!dashboardHasData) {
         dashboardPageState = PAGE_STATUS.EMPTY;
+        store.state.dashboardLoadedPeriod = selectedPeriod;
+        store.state.isDashboardLoaded = true;
         clearDashboardLiveContent();
         return;
     }
@@ -473,6 +490,9 @@ async function loadDashboardInternal() {
     updateGlobalHeader(globalTotal, globalPast, contributors);
     renderDashboardFireStatus(globalTotal, currentFireStatusRequestId);
     renderXrayChart();
+
+    store.state.dashboardLoadedPeriod = selectedPeriod;
+    store.state.isDashboardLoaded = true;
     
     if (window.location.hash === '#fire') {
         renderFireView();

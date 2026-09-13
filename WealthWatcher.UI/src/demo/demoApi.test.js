@@ -9,6 +9,7 @@ import {
     resetDemoClock,
     setDemoClock
 } from './demoApi.js';
+import { AGGREGATE_PERIOD_STORAGE_KEY } from '../utils/aggregatePeriodPreference.js';
 
 const BUDGET_CATEGORIES = ['income', 'bills', 'savings', 'spend'];
 const CADENCE_MONTHS = { monthly: 1, quarterly: 3, annually: 12 };
@@ -455,6 +456,7 @@ test('invalid budget input fails atomically and reset keeps unrelated localStora
     try {
         values.set('wealthwatcher_pane_monthly-budget', 'open');
         values.set(DEMO_BANNER_KEY, 'true');
+        values.set(AGGREGATE_PERIOD_STORAGE_KEY, '1W');
         const saved = await handleDemoRequest('/api/settings', {
             method: 'POST',
             body: JSON.stringify({ wealthWatcherBudgetSettings: JSON.stringify({ income: [{ name: 'Temporary', amount: 10 }], bills: [], savings: [], spend: [] }) })
@@ -466,6 +468,7 @@ test('invalid budget input fails atomically and reset keeps unrelated localStora
         assert.equal(values.has(LEGACY_DEMO_STORAGE_KEY), false);
         assert.equal(values.get('wealthwatcher_pane_monthly-budget'), 'open');
         assert.equal(values.get(DEMO_BANNER_KEY), 'true');
+        assert.equal(values.get(AGGREGATE_PERIOD_STORAGE_KEY), '1W');
         assert.equal((await readBudgetSettings()).income.some(item => item.name === 'Temporary'), false);
     } finally {
         if (previousStorage === undefined) delete globalThis.localStorage;
@@ -484,9 +487,10 @@ test('seed data provides dense history across the past year and a bit', () => {
         months[month] = (months[month] || 0) + 1;
         return months;
     }, {});
+    const firstMonth = dates[0].slice(0, 7);
     const currentMonth = dates.at(-1).slice(0, 7);
     const completedMonthObservationCounts = Object.entries(observationsByMonth)
-        .filter(([month]) => month !== currentMonth)
+        .filter(([month]) => month !== firstMonth && month !== currentMonth)
         .map(([, count]) => count);
 
     assert.ok(state.entries.length >= 650);
