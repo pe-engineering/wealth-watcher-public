@@ -2,7 +2,14 @@
 
 All notable changes to this project will be documented here.
 
-The latest stable release is `v0.12.0`. Changes that have not yet been released are grouped under `Unreleased`.
+The latest stable release is `v0.13.0`. Changes that have not yet been released are grouped under `Unreleased`.
+
+## 0.13.0 - 2026-09-14
+
+- Add per-connection polling schedules for fixed minute intervals, five-field cron, hourly offsets, hourly on-the-hour, daily, and weekly execution using API-host local time.
+- Add the integration schedule migration, backfill existing connections from their saved polling intervals, and expose schedule controls with validation in the API and Integrations page.
+- Share the aggregate period selection between Dashboard and History, persist it in browser-local storage, and reload pages when their cached data belongs to a different period.
+- Refresh the .NET SDK, Vite, SnapTrade.Net, GitHub Actions, and related test/runtime dependencies, with expanded schedule, shared-period, routing, UI, and demo regression coverage.
 
 ## 0.12.0 - 2026-09-10
 
