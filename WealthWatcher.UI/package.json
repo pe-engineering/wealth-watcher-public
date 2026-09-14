@@ -15,7 +15,7 @@
     "chart.js": "4.5.1",
     "chartjs-plugin-datalabels": "2.2.0",
     "flatpickr": "4.6.13",
-    "vite": "^8.2.2"
+    "vite": "^8.3.0"
   },
   "dependencies": {
     "pluralize": "^8.0.0"
