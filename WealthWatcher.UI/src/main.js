@@ -631,7 +631,7 @@ document.getElementById('add-entry-form')?.addEventListener('submit', async (e) 
     const payload = {
         Type: document.getElementById('entry-category').value,
         Name: document.getElementById('entry-name').value,
-        Value: parseFloat(val).toFixed(2),
+        Value: Number(parseFloat(val).toFixed(2)),
         Date: dt,
         // WealthEntry timestamps are stored as UTC date/time pairs. Using the
         // browser's local clock here can make a new entry look like it is in
@@ -647,11 +647,11 @@ document.getElementById('add-entry-form')?.addEventListener('submit', async (e) 
     }
 
     if (cat === 'property' && mortgage) {
-        payload.Mortgage = parseFloat(mortgage).toFixed(2);
+        payload.Mortgage = Number(parseFloat(mortgage).toFixed(2));
     }
     
     if ((cat === 'pensions' || cat === 'investments') && invested) {
-        payload.InvestedCapital = parseFloat(invested).toFixed(2);
+        payload.InvestedCapital = Number(parseFloat(invested).toFixed(2));
     }
 
     try {
