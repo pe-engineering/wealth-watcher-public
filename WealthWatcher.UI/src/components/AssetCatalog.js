@@ -569,7 +569,7 @@ async function saveValue(form, refresh) {
     let path;
     let payload;
     if (editorState.isAsset) {
-        const assetKindId = String(formData.get('assetKindId') || '').trim();
+        const assetKindId = String(formData.get('assetKindId') || formData.get('parentValueId') || '').trim();
         const assetGroupId = String(formData.get('assetGroupId') || '').trim();
         if (!assetKindId) {
             await requestNotification({
