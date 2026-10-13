@@ -7,7 +7,7 @@ RUN dotnet publish "WealthWatcher.Api.csproj" -c Release -o /app/publish /p:UseA
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:222759b391a1aaf241166672c8f99b2d4ada452e7b5319f3c6e8f265a37b5ad4 AS final
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgssapi-krb5-2=1.20.1-6ubuntu2.8 \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 EXPOSE 8080
