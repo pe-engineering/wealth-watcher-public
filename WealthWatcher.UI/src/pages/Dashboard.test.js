@@ -463,6 +463,8 @@ test('Dashboard category cards render selected-period deltas and update them aft
 
         const dailyHtml = elements.get('liquid-grid').innerHTML;
         assert.ok(dailyHtml.includes('card-delta  obfuscate-val">+£10.00 (8.33%)'), 'card delta refreshes when the selected period changes');
+        assert.equal(elements.get('global-delta').innerText, '+£10.00 (1.30%)',
+            'headline includes the savings baseline even though its first bucket starts later');
         assert.ok(fetchRequests.some(url => url.includes('/dashboard?period=1D')));
     } finally {
         store.clearCache();
