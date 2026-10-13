@@ -1151,22 +1151,35 @@ public sealed class EndpointExtensionsTests
         Assert.Equal(1, response.RootElement.GetProperty("TrendTargetHitMonth").GetInt32());
     }
 
-    [Fact]
-    public async Task Forecast_adds_monthly_contributions_linearly_without_appreciation()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(10)]
+    [InlineData(12)]
+    public async Task Forecast_adds_monthly_contributions_linearly_without_appreciation(int startMonth)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = new DateOnly(2026, startMonth, 15);
         await using var host = await ForecastHost.CreateAsync(
         [
             new InvestmentEntry("Fund", "investments", 100m, null, today.AddDays(-60), TimeOnly.MinValue),
             new InvestmentEntry("Fund", "investments", 121m, null, today, TimeOnly.MinValue)
-        ]);
+        ], Utc(today.Year, today.Month, today.Day, 12, 0));
 
         var response = await host.PostForecastAsync(new ForecastRequest { Target = 160m, MonthlyContribution = 10m });
         var trend = response.RootElement.GetProperty("HistoricalTrend");
 
         Assert.Equal(121d, trend[0].GetProperty("Total").GetDouble(), 6);
-        Assert.Equal(161d, trend[1].GetProperty("Total").GetDouble(), 6);
+        var targetDate = new DateOnly(today.Year, today.Month, 1).AddMonths(4);
+        var targetPoint = Assert.Single(trend.EnumerateArray(), point =>
+            point.GetProperty("Date").GetString() == targetDate.ToString("yyyy-MM-dd"));
+        Assert.Equal(161d, targetPoint.GetProperty("Total").GetDouble(), 6);
         Assert.Equal(4, response.RootElement.GetProperty("TrendTargetHitMonth").GetInt32());
+        Assert.Equal(targetDate.ToString("yyyy-MM-dd"), response.RootElement.GetProperty("TrendTargetHitDate").GetString());
+        foreach (var point in trend.EnumerateArray())
+        {
+            var date = DateOnly.Parse(point.GetProperty("Date").GetString()!);
+            var months = (date.Year - today.Year) * 12 + date.Month - today.Month;
+            Assert.Equal(121d + months * 10d, point.GetProperty("Total").GetDouble(), 6);
+        }
     }
 
     private sealed class ForecastHost : IAsyncDisposable
