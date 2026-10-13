@@ -754,13 +754,14 @@ public sealed class IntegrationService(
                     .Include(candidate => candidate.AssetValueEntry)
                     .FirstOrDefaultAsync(candidate =>
                         candidate.ExternalValueId == externalValue.Id &&
-                        candidate.AssetValueEntry!.Date == date,
+                        candidate.AssetValueEntry!.Date == date &&
+                        candidate.AssetValueEntry.Time == time,
                         cancellationToken);
 
                 // Removing a connection cascades its ExternalValue rows, but
                 // deliberately retains the value entries as history. Adopt an
                 // orphaned integration source for the same allocated asset and
-                // day so replacing a connection updates that history instead
+                // observation so replacing a connection updates that history instead
                 // of creating a second balance for the asset.
                 if (source is null)
                 {
@@ -770,7 +771,8 @@ public sealed class IntegrationService(
                             candidate.SourceKind == AssetValueEntrySourceKind.Integration &&
                             candidate.ExternalValueId == null &&
                             candidate.AssetValueEntry!.AssetId == mappedAssetId &&
-                            candidate.AssetValueEntry.Date == date)
+                            candidate.AssetValueEntry.Date == date &&
+                            candidate.AssetValueEntry.Time == time)
                         .OrderByDescending(candidate => candidate.AssetValueEntry!.Time)
                         .FirstOrDefaultAsync(cancellationToken);
                 }

@@ -13,6 +13,50 @@ namespace WealthWatcher.Api.Tests;
 public sealed class IntegrationServiceTests
 {
     [Fact]
+    public async Task Hourly_syncs_preserve_observations_and_repeated_timestamps_update_in_place()
+    {
+        var options = new DbContextOptionsBuilder<WealthDbContext>()
+            .UseInMemoryDatabase($"integration-hourly-tests-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new WealthDbContext(options);
+        var adapter = new TestAdapter(observedAt: new DateTimeOffset(2026, 8, 10, 8, 0, 0, TimeSpan.Zero));
+        var service = CreateService(db, new IntegrationRegistry([adapter]),
+            new IntegrationCredentialProtector(DataProtectionProvider.Create("wealth-watcher-hourly-tests")),
+            new FixedTimeProvider(new DateTimeOffset(2026, 8, 10, 17, 0, 0, TimeSpan.Zero)));
+        var connection = await service.CreateConnectionAsync("test", "Hourly connection");
+        await service.SaveCredentialsAsync(connection.Id, new Dictionary<string, string> { ["apiKey"] = "secret" });
+        await service.DiscoverAccountsAsync(connection.Id);
+        var account = await db.IntegrationAccounts.SingleAsync();
+        var asset = new Asset { DisplayName = "Hourly investment" };
+        AssetCatalogService.EnsureDefaults(db);
+        var kind = await db.AssetKinds.SingleAsync(kind => kind.Code == AssetKindCodes.Investments);
+        asset.AssetKindAssignments.Add(new AssetKindAssignment { AssetId = asset.Id, AssetKindId = kind.Id });
+        db.Assets.Add(asset);
+        await db.SaveChangesAsync();
+        await service.AllocateAccountAsync(connection.Id, account.Id, asset.Id);
+
+        Assert.True((await service.SyncAsync(connection.Id))!.Succeeded);
+        adapter.ObservedAt = adapter.ObservedAt!.Value.AddHours(1);
+        adapter.SnapshotValue = 130m;
+        Assert.True((await service.SyncAsync(connection.Id))!.Succeeded);
+        adapter.SnapshotValue = 132m;
+        Assert.True((await service.SyncAsync(connection.Id))!.Succeeded);
+
+        var entries = await db.AssetValueEntries.OrderBy(entry => entry.Time).ToListAsync();
+        Assert.Equal(2, entries.Count);
+        Assert.Equal(new TimeOnly(8, 0), entries[0].Time);
+        Assert.Equal(125m, entries[0].Value);
+        Assert.Equal(new TimeOnly(9, 0), entries[1].Time);
+        Assert.Equal(132m, entries[1].Value);
+        var aggregates = await new WealthReadModelService(db,
+            new FixedTimeProvider(new DateTimeOffset(2026, 8, 10, 17, 0, 0, TimeSpan.Zero)))
+            .GetAggregatesAsync("1D", null, timeZone: "UTC", intraday: true);
+        var points = Assert.Single(aggregates, category => category.Category == AssetKindCodes.Investments).Response.Data;
+        Assert.Equal(125m, points.First().Value);
+        Assert.Equal(132m, points.Last().Value);
+    }
+
+    [Fact]
     public void Credential_protector_encrypts_values_before_storage()
     {
         var path = Path.Combine(Path.GetTempPath(), $"wealth-watcher-keys-{Guid.NewGuid():N}");
@@ -524,6 +568,8 @@ public sealed class IntegrationServiceTests
         };
 
         public int PullCount { get; private set; }
+        public DateTimeOffset? ObservedAt { get; set; } = observedAt;
+        public decimal? SnapshotValue { get; set; }
 
         public Task<IntegrationTestResult> TestAsync(IntegrationContext context, CancellationToken cancellationToken) =>
             Task.FromResult(new IntegrationTestResult { Succeeded = true, Message = "Test passed." });
@@ -546,13 +592,14 @@ public sealed class IntegrationServiceTests
             if (throwOnPull)
                 throw new InvalidOperationException("provider.example returned secret-token for account SIPP with value £1234.56");
 
-            return Task.FromResult(CreatePullResult(snapshotNameSuffix, includeCash, observedAt));
+            return Task.FromResult(CreatePullResult(snapshotNameSuffix, includeCash, ObservedAt, SnapshotValue));
         }
 
         private static IntegrationPullResult CreatePullResult(
             string? snapshotNameSuffix,
             bool includeCash,
-            DateTimeOffset? observedAtOverride = null)
+            DateTimeOffset? observedAtOverride = null,
+            decimal? snapshotValue = null)
         {
             var observedAt = observedAtOverride ?? DateTimeOffset.UtcNow;
             var values = new List<ExternalValueSnapshot>
@@ -565,7 +612,7 @@ public sealed class IntegrationServiceTests
                     NameSuffix = snapshotNameSuffix,
                     Type = "investments",
                     Role = ExternalValueRole.Deployed,
-                    Value = includeCash ? 100m : 125m,
+                    Value = snapshotValue ?? (includeCash ? 100m : 125m),
                     ObservedAt = observedAt
                 }
             };

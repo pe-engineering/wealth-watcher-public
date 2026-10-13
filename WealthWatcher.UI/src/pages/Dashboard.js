@@ -375,16 +375,16 @@ async function loadDashboardInternal() {
     for (let [date, val] of sortedTimeline) {
         if (val > 0) {
             firstValidDate = date;
-            globalPast = val;
             break;
         }
     }
     
     if (!firstValidDate && sortedTimeline.length > 0) {
         firstValidDate = sortedTimeline[0][0];
-        globalPast = sortedTimeline[0][1];
     }
 
+    // Categories can start at different hours (midnight or market open).
+    // Sum the same baselines used by the cards so no category is omitted.
     visibleResults.forEach(({cat, data}) => {
         const history = data?.Data || [];
         const isManual = data?.IsManual;
@@ -414,6 +414,7 @@ async function loadDashboardInternal() {
         }
 
         globalTotal += currentVal;
+        globalPast += pastVal;
         
         const catId = cat.Id.toLowerCase();
         store.state.categories[catId] = (store.state.categories[catId] || 0) + currentVal;
