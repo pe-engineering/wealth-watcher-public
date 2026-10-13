@@ -2,7 +2,15 @@
 
 All notable changes to this project will be documented here.
 
-The latest stable release is `v0.13.0`. Changes that have not yet been released are grouped under `Unreleased`.
+The latest stable release is `v0.14.0`. Changes that have not yet been released are grouped under `Unreleased`.
+
+## 0.14.0 - 2026-10-13
+
+- Retain each hourly integration poll as its own observation instead of overwriting earlier values from the same day, including when a replaced connection adopts orphaned history.
+- Fix the Dashboard Day headline so its net-worth total and change sum the same per-category baselines as the asset cards.
+- Fix pension asset creation from the Dashboard and Settings, and send new-entry monetary values to the API as numbers.
+- Fix the API runtime image build by installing the current patched `libgssapi-krb5-2` instead of a withdrawn exact Ubuntu package version.
+- Refresh the .NET, Node, nginx, and PostgreSQL base images, Vite, SnapTrade.Net, Swashbuckle.AspNetCore, SharpCompress, test dependencies, and GitHub Actions; no migration or configuration change is required.
 
 ## 0.13.0 - 2026-09-14
 
