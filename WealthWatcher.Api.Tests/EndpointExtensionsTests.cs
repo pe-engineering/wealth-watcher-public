@@ -489,6 +489,35 @@ public sealed class EndpointExtensionsTests
     }
 
     [Fact]
+    public async Task Dashboard_day_current_total_and_contributors_include_after_close_observations()
+    {
+        var entries = new[] { (Hour: 10, Value: 125m), (Hour: 20, Value: 150m), (Hour: 22, Value: 999m) }
+            .Select(item => new InvestmentEntry("SIPP", "pensions", item.Value, 100m,
+                new DateOnly(2026, 8, 10), new TimeOnly(item.Hour, 0))
+            {
+                ProviderKey = "snaptrade",
+                ExternalAssetId = "account:sipp"
+            });
+        await using var host = await ForecastHost.CreateAsync(entries, Utc(2026, 8, 10, 21, 0),
+            connections: [new IntegrationConnection
+            {
+                ProviderKey = "snaptrade", DisplayName = "Pension", Enabled = true,
+                Status = IntegrationConnectionStatus.Active, OnlyPollDuringMarketTimes = true
+            }]);
+
+        using var dashboard = await host.GetDashboardAsync("1D");
+        var root = dashboard.RootElement;
+        Assert.Equal(150m, root.GetProperty("CurrentTotal").GetDecimal());
+        var aggregate = root.GetProperty("Categories").EnumerateArray()
+            .Single(category => category.GetProperty("Id").GetString() == "pensions").GetProperty("Aggregate");
+        Assert.Equal(125m, aggregate.GetProperty("Data").EnumerateArray().Last().GetProperty("Value").GetDecimal());
+        Assert.Equal(150m, aggregate.GetProperty("Current").GetProperty("Value").GetDecimal());
+        Assert.Equal(150m, aggregate.GetProperty("LatestBreakdown").GetProperty("SIPP").GetDecimal());
+        Assert.Equal(150m, root.GetProperty("Contributors").EnumerateArray().Single()
+            .GetProperty("CurrentValue").GetDecimal());
+    }
+
+    [Fact]
     public async Task Aggregate_keeps_snaptrade_total_and_undeployed_cash_separate_for_one_asset()
     {
         var asset = new Asset { DisplayName = "AJ Bell - SIPP" };

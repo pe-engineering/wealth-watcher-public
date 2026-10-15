@@ -1,4 +1,5 @@
 export function getCurrentAggregateValue(data) {
+    if (data?.Current) return Number(data.Current.Value) || 0;
     const history = data?.Data;
     if (!Array.isArray(history) || history.length === 0) return 0;
     return Number(history.at(-1)?.Value) || 0;

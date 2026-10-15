@@ -26,6 +26,8 @@ The adapter should expose a stable provider key, a descriptor for the setup UI, 
 
 Keep persistence, credential protection, account allocation, and connection lifecycle logic in the common integration services. The adapter should translate the provider’s API into the shared models.
 
+A successful connection test preserves `Active` for an already active connection so scheduled polling and webhook dispatch continue. New connections advance to `Tested` before discovery and allocation. Dashboard aggregates expose a `Current` snapshot and `LatestBreakdown` using all observations available now; their intraday `Data` chart can still stop at market close.
+
 ## Rate limiting
 
 Every outbound provider request must pass through the shared `IProviderRateLimiter`. Register the limiter as a singleton so all named instances of the same provider share its buckets. Do not create a limiter inside an adapter or key it by `ConnectionId`.

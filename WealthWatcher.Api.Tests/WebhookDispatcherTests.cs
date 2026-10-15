@@ -15,8 +15,10 @@ namespace WealthWatcher.Api.Tests;
 
 public sealed class WebhookDispatcherTests
 {
-    [Fact]
-    public async Task Account_webhook_resolves_and_syncs_the_matching_connection()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Account_webhook_resolves_and_syncs_the_matching_connection(bool testActiveConnection)
     {
         await using var db = CreateDatabase();
         var adapter = new TestAdapter();
@@ -36,6 +38,15 @@ public sealed class WebhookDispatcherTests
             Enabled = true,
             SyncMode = nameof(IntegrationSyncMode.Webhook)
         });
+
+        if (testActiveConnection)
+        {
+            Assert.True((await setup.TestAsync(connection.Id))!.Succeeded);
+            var stored = await db.IntegrationConnections.SingleAsync();
+            Assert.Equal(IntegrationConnectionStatus.Active, stored.Status);
+            Assert.NotNull(stored.LastTestedAt);
+            Assert.Null(stored.LastError);
+        }
 
         await using var serviceProvider = BuildDispatcherProvider(db, registry, protector);
         var dispatcher = serviceProvider.GetRequiredService<IWebhookDispatcher>();
