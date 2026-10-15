@@ -398,6 +398,31 @@ public sealed class WealthReadModelService(
         }
         }
 
+        // The chart may stop at market close, but current balances include every
+        // observation available now (including manual and webhook evening syncs).
+        runningBalances.Clear();
+        runningBalanceNames.Clear();
+        runningBalanceIsIntegration.Clear();
+        runningInvested.Clear();
+        runningPropertyValues.Clear();
+        nextArchiveEvent = 0;
+        foreach (var entry in allEntries.Where(entry => EntryTimestampUtc(entry) <= effectiveNowUtc))
+        {
+            RemoveArchivedBalances(EntryTimestampUtc(entry));
+            RecordEntry(entry, SetRunningBalance, runningInvested, EntryIdentity);
+        }
+        RemoveArchivedBalances(effectiveNowUtc);
+        var current = new WealthAggregatePoint
+        {
+            Time = new DateTimeOffset(effectiveNowUtc, TimeSpan.Zero).ToString("o"),
+            Value = runningBalances.Values.Sum(),
+            Invested = runningInvested.Values.Sum(),
+            GrossValue = isPropertyCategory ? runningPropertyValues.Values.Sum() : null,
+            Equity = isPropertyCategory ? runningBalances.Values.Sum() : null,
+            PropertyValues = BuildPropertyValues(),
+            Breakdown = BuildBreakdown()
+        };
+
         PropertyAggregateDetails? propertyDetails = null;
         if (isPropertyCategory)
         {
@@ -454,6 +479,7 @@ public sealed class WealthReadModelService(
         return new WealthAggregateResponse
         {
             Data = resultData,
+            Current = current,
             LastSyncDateTime = lastSync,
             IsManual = allEntries.All(entry => !IsIntegrationEntry(entry)),
             LatestBreakdown = BuildBreakdown(),

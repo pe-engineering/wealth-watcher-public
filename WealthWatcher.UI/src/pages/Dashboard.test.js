@@ -856,6 +856,20 @@ test('Dashboard splits mixed AssetKind balances across each asset group', async 
         assert.doesNotMatch(elements.get('liquid-grid').innerHTML, /Pension portfolio/);
         assert.match(elements.get('illiquid-grid').innerHTML, /Pension portfolio/);
         assert.doesNotMatch(elements.get('illiquid-grid').innerHTML, />ISA</);
+
+        const aggregate = mockApiResponses['/wealth/investments/aggregate?period=1M'];
+        aggregate.Current = {
+            Time: '2026-07-30T20:00:00Z', Value: 350, Invested: 250,
+            Breakdown: { ISA: 130, 'Pension portfolio': 220 }
+        };
+        aggregate.LatestBreakdown = aggregate.Current.Breakdown;
+        store.clearCache();
+        await loadDashboard({ force: true });
+        assert.equal(elements.get('liquid-total').innerText, '£130.00');
+        assert.equal(elements.get('illiquid-total').innerText, '£220.00');
+        assert.equal(elements.get('global-total').innerText, '£350.00');
+        assert.match(elements.get('liquid-grid').innerHTML, /card-value obfuscate-val">£130.00/);
+        assert.match(elements.get('illiquid-grid').innerHTML, /card-value obfuscate-val">£220.00/);
     } finally {
         store.clearCache();
         store.state.currentPeriod = originals.period;
@@ -1015,6 +1029,47 @@ test('Dashboard derives singular asset action labels dynamically', () => {
     assert.equal(getDashboardAssetName({ Id: 'categories', Label: 'Categories' }), 'Category');
     assert.equal(getDashboardAssetName({ Id: 'bonds', Label: 'Bonds' }), 'Bond');
     assert.equal(getDashboardAssetName({ Id: 'cash', Label: 'Cash', SingularName: 'Money' }), 'Money');
+});
+
+test('Day dashboard cards and totals use evening observations while charts retain market hours', async () => {
+    const originalState = { ...store.state };
+    try {
+        elements.clear();
+        store.clearCache();
+        chartConfigurations = [];
+        store.state.currentPeriod = '1D';
+        store.state.classificationGroups = [];
+        store.state.assets = [];
+        store.state.generalSettings = { showSparklines: true };
+        store.state.CATEGORIES = [{ Id: 'pensions', Label: 'Pensions', Color: '#8b5cf6' }];
+        const history = [
+            { Time: '2026-08-10T08:00:00Z', Value: 100, Breakdown: { SIPP: 100 } },
+            { Time: '2026-08-10T16:00:00Z', Value: 125, Breakdown: { SIPP: 125 } }
+        ];
+        mockApiResponses = {
+            '/wealth/pensions/aggregate?period=1D': {
+                Data: history,
+                Current: { Time: '2026-08-10T21:00:00Z', Value: 150, Breakdown: { SIPP: 150 } },
+                LatestBreakdown: { SIPP: 150 },
+                LastSyncDateTime: '2026-08-10T20:00:00Z'
+            }
+        };
+        await loadDashboard({ force: true });
+        await new Promise(resolve => setTimeout(resolve, 20));
+        assert.equal(elements.get('global-total').innerText, '£150.00');
+        assert.equal(elements.get('liquid-total').innerText, '£150.00');
+        const html = elements.get('liquid-grid').innerHTML;
+        assert.match(html, /card-value obfuscate-val">£150.00/);
+        assert.match(html, /breakdown-val[^>]*>£150.00/);
+        const chart = chartConfigurations.find(config => config.data.labels?.includes(history[1].Time));
+        assert.deepEqual(chart.data.labels, history.map(point => point.Time));
+        assert.deepEqual(chart.data.datasets[0].data, [100, 125]);
+    } finally {
+        store.clearCache();
+        Object.assign(store.state, originalState);
+        mockApiResponses = {};
+        chartConfigurations = [];
+    }
 });
 
 test('Dashboard asset cards place the type-specific Add action in the header without a card-level archive action', async () => {

@@ -161,7 +161,9 @@ public sealed class IntegrationService(
             connection.LastTestedAt = DateTimeOffset.UtcNow;
             connection.LastError = result.Succeeded ? null : IntegrationSecurityMessages.TestFailed;
             connection.Status = result.Succeeded
-                ? IntegrationConnectionStatus.Tested
+                ? connection.Status == IntegrationConnectionStatus.Active
+                    ? IntegrationConnectionStatus.Active
+                    : IntegrationConnectionStatus.Tested
                 : IntegrationConnectionStatus.Error;
             connection.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync(cancellationToken);

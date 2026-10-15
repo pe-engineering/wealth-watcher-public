@@ -5,6 +5,7 @@ namespace WealthWatcher.Api.Models;
 public sealed class WealthAggregateResponse
 {
     public List<WealthAggregatePoint> Data { get; init; } = new();
+    public WealthAggregatePoint? Current { get; init; }
     public DateTimeOffset? LastSyncDateTime { get; init; }
     public bool IsManual { get; init; }
     public Dictionary<string, decimal> LatestBreakdown { get; init; } = new(StringComparer.OrdinalIgnoreCase);

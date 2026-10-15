@@ -12,8 +12,57 @@ namespace WealthWatcher.Api.Tests;
 
 public sealed class IntegrationServiceTests
 {
+    [Theory]
+    [InlineData("UTC")]
+    [InlineData("Europe/London")]
+    public async Task Evening_sync_updates_current_snapshot_without_extending_market_hours_chart(string timeZone)
+    {
+        var options = new DbContextOptionsBuilder<WealthDbContext>()
+            .UseInMemoryDatabase($"evening-sync-{Guid.NewGuid():N}").Options;
+        await using var db = new WealthDbContext(options);
+        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 8, 10, 21, 0, 0, TimeSpan.Zero));
+        var adapter = new TestAdapter(observedAt: new DateTimeOffset(2026, 8, 10, 10, 0, 0, TimeSpan.Zero));
+        var service = CreateService(db, new IntegrationRegistry([adapter]),
+            new IntegrationCredentialProtector(DataProtectionProvider.Create("evening-sync")), clock);
+        var connection = await service.CreateConnectionAsync("test", "Pension");
+        await service.SaveCredentialsAsync(connection.Id, new Dictionary<string, string> { ["apiKey"] = "secret" });
+        await service.DiscoverAccountsAsync(connection.Id);
+        AssetCatalogService.EnsureDefaults(db);
+        var kind = await db.AssetKinds.SingleAsync(kind => kind.Code == AssetKindCodes.Pensions);
+        var asset = new Asset { DisplayName = "SIPP" };
+        asset.AssetKindAssignments.Add(new AssetKindAssignment { AssetId = asset.Id, AssetKindId = kind.Id });
+        db.Assets.Add(asset);
+        await db.SaveChangesAsync();
+        await service.AllocateAccountAsync(connection.Id, (await db.IntegrationAccounts.SingleAsync()).Id, asset.Id);
+        await service.UpdateConnectionAsync(connection.Id, new IntegrationConnectionUpdate { OnlyPollDuringMarketTimes = true });
+
+        Assert.True(Assert.Single(await service.SyncEnabledAsync(ignoreSchedule: true)).Succeeded);
+        Assert.Equal(1, adapter.PullCount);
+
+        adapter.ObservedAt = new DateTimeOffset(2026, 8, 10, 20, 0, 0, TimeSpan.Zero);
+        adapter.SnapshotValue = 150m;
+        Assert.True((await service.SyncAsync(connection.Id))!.Succeeded);
+        var readModel = new WealthReadModelService(db, clock);
+        foreach (var period in new[] { "1D", "1W", "MAX" })
+        {
+            var categories = await readModel.GetAggregatesAsync(period, null, timeZone: timeZone,
+                marketHours: CreateMarketHours(), intraday: true);
+            var response = Assert.Single(categories, category => category.Category == AssetKindCodes.Pensions).Response;
+            Assert.Equal(150m, response.Current!.Value);
+            Assert.Equal(150m, response.Current.Breakdown["SIPP"]);
+            Assert.Equal(150m, response.LatestBreakdown["SIPP"]);
+            Assert.Equal(adapter.ObservedAt, response.LastSyncDateTime);
+            if (period == "1D")
+            {
+                Assert.Equal(125m, response.Data.Last().Value);
+                Assert.Equal(16, DateTimeOffset.Parse(response.Data.Last().Time).Hour);
+            }
+            else Assert.Equal(150m, response.Data.Last().Value);
+        }
+    }
+
     [Fact]
-    public async Task Hourly_syncs_preserve_observations_and_repeated_timestamps_update_in_place()
+    public async Task Successful_test_preserves_active_polling_and_hourly_observations()
     {
         var options = new DbContextOptionsBuilder<WealthDbContext>()
             .UseInMemoryDatabase($"integration-hourly-tests-{Guid.NewGuid():N}")
@@ -35,7 +84,12 @@ public sealed class IntegrationServiceTests
         await db.SaveChangesAsync();
         await service.AllocateAccountAsync(connection.Id, account.Id, asset.Id);
 
-        Assert.True((await service.SyncAsync(connection.Id))!.Succeeded);
+        Assert.True((await service.TestAsync(connection.Id))!.Succeeded);
+        var stored = await db.IntegrationConnections.SingleAsync();
+        Assert.Equal(IntegrationConnectionStatus.Active, stored.Status);
+        Assert.NotNull(stored.LastTestedAt);
+        Assert.Null(stored.LastError);
+        Assert.True(Assert.Single(await service.SyncEnabledAsync()).Succeeded);
         adapter.ObservedAt = adapter.ObservedAt!.Value.AddHours(1);
         adapter.SnapshotValue = 130m;
         Assert.True((await service.SyncAsync(connection.Id))!.Succeeded);
@@ -99,6 +153,7 @@ public sealed class IntegrationServiceTests
         var test = await service.TestAsync(connection.Id);
         Assert.NotNull(test);
         Assert.True(test!.Succeeded);
+        Assert.Equal(IntegrationConnectionStatus.Tested, stored.Status);
 
         var discovered = await service.DiscoverAccountsAsync(connection.Id);
         Assert.NotNull(discovered);

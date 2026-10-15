@@ -1242,7 +1242,8 @@ public static class EndpointExtensions
     {
         var timeline = BuildTimeline(aggregates);
         var ytdTimeline = BuildTimeline(ytd);
-        var currentTotal = timeline.LastOrDefault()?.Value ?? 0m;
+        var currentTotal = aggregates.Sum(category =>
+            (category.Response.Current ?? category.Response.Data.LastOrDefault())?.Value ?? 0m);
         var previousTotal = timeline
             .Where(point => !TryGetAggregateDate(point.Time, out var date) || date < today)
             .LastOrDefault()?.Value ?? (timeline.Count > 1 ? timeline[^2].Value : currentTotal);
@@ -1252,7 +1253,7 @@ public static class EndpointExtensions
         var contributors = aggregates
             .Select(category =>
             {
-                var currentPoint = category.Response.Data.LastOrDefault();
+                var currentPoint = category.Response.Current ?? category.Response.Data.LastOrDefault();
                 var startingPoint = ytdByCategory.TryGetValue(category.Category, out var ytdCategory)
                     ? ytdCategory.Response.Data.FirstOrDefault()
                     : null;
@@ -1385,6 +1386,7 @@ public static class EndpointExtensions
             Response = new WealthAggregateResponse
             {
                 Data = mergedData,
+                Current = currentIsAvailable ? current.Response.Current : historical.Response.Current,
                 LastSyncDateTime = currentIsAvailable
                     ? current.Response.LastSyncDateTime ?? historical.Response.LastSyncDateTime
                     : historical.Response.LastSyncDateTime,

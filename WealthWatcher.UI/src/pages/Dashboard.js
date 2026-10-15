@@ -338,7 +338,7 @@ async function loadDashboardInternal() {
     let contributors = [];
     const visibleResults = results.filter(({ cat, data }) => !shouldHideDashboardCategory(cat, data));
     dashboardHasData = visibleResults.some(({ data }) =>
-        Array.isArray(data?.Data) && data.Data.length > 0);
+        data?.Current || (Array.isArray(data?.Data) && data.Data.length > 0));
     if (!dashboardHasData) {
         dashboardPageState = PAGE_STATUS.EMPTY;
         store.state.dashboardLoadedPeriod = selectedPeriod;
@@ -395,9 +395,10 @@ async function loadDashboardInternal() {
         let currentInvested = 0;
         let pastInvested = 0;
 
+        const currentPoint = data?.Current || history.at(-1);
+        currentVal = getCurrentAggregateValue(data);
+        currentInvested = Number(currentPoint?.Invested) || 0;
         if (history.length > 0) {
-            currentVal = history[history.length - 1].Value;
-            currentInvested = history[history.length - 1].Invested || 0;
             if (firstValidDate) {
                 const pastEntry = history.find(h => h.Time === firstValidDate);
                 if (pastEntry) {
@@ -422,7 +423,7 @@ async function loadDashboardInternal() {
         const delta = currentVal - pastVal;
         const deltaInvested = currentInvested - pastInvested;
         const insightChildren = normalizeCode(cat.Id) === 'property'
-            ? buildPropertyInsightContributors(history.at(-1), firstValidDate
+            ? buildPropertyInsightContributors(currentPoint, firstValidDate
                 ? history.find(point => point.Time === firstValidDate) || history[0]
                 : history[0], cat.Color)
             : [];
@@ -431,12 +432,12 @@ async function loadDashboardInternal() {
         const groupParts = getCategoryGroupParts(cat, data, assetGroupDescriptors);
         groupParts.forEach((part, index) => {
             const partHistory = part.history;
-            const partCurrentVal = Number(partHistory.at(-1)?.Value) || 0;
+            const partCurrentVal = Number(part.current?.Value ?? partHistory.at(-1)?.Value) || 0;
             const partPastEntry = firstValidDate
                 ? partHistory.find(point => point.Time === firstValidDate) || partHistory[0]
                 : partHistory[0];
             const partPastVal = Number(partPastEntry?.Value) || 0;
-            const partCurrentInvested = Number(partHistory.at(-1)?.Invested) || 0;
+            const partCurrentInvested = Number(part.current?.Invested ?? partHistory.at(-1)?.Invested) || 0;
             const partPastInvested = Number(partPastEntry?.Invested) || 0;
             const partDelta = partCurrentVal - partPastVal;
             const partAssetGroup = part.descriptor || resolveAssetGroupDescriptor(cat, assetGroupDescriptors);
@@ -1027,6 +1028,7 @@ function getCategoryGroupParts(category, data, descriptors) {
         return [{
             descriptor: groupDescriptors[0] || fallbackDescriptor,
             history,
+            current: data?.Current,
             breakdown: data?.LatestBreakdown || getAggregateBreakdown(latestPoint) || {},
             propertyDetails: data?.PropertyDetails,
             investmentDetails: data?.InvestmentDetails
@@ -1063,6 +1065,10 @@ function getCategoryGroupParts(category, data, descriptors) {
         ? splitBreakdownByAssetGroup(data.LatestBreakdown, category, descriptors, fallbackDescriptor)
         : new Map();
 
+    const currentGroups = data?.Current
+        ? splitBreakdownByAssetGroup(data.Current.Breakdown || {}, category, descriptors, fallbackDescriptor)
+        : null;
+
     return groupDescriptors
         .map(descriptor => {
             const partHistory = groupedHistory.get(descriptor.key) || [];
@@ -1072,6 +1078,13 @@ function getCategoryGroupParts(category, data, descriptors) {
             return {
                 descriptor,
                 history: partHistory,
+                current: currentGroups ? {
+                    ...data.Current,
+                    Value: currentGroups.get(descriptor.key)?.value || 0,
+                    Invested: calculateInvestedShare(data.Current.Value, data.Current.Invested,
+                        currentGroups.get(descriptor.key)?.value || 0),
+                    Breakdown: currentGroups.get(descriptor.key)?.breakdown || {}
+                } : null,
                 breakdown: partBreakdown,
                 propertyDetails: getPropertyDetailsForGroup(
                     data?.PropertyDetails,
@@ -1083,7 +1096,7 @@ function getCategoryGroupParts(category, data, descriptors) {
             };
         })
         .filter(part => store.state.generalSettings?.showZeroValuesOnDashboard === true
-            || Number(part.history.at(-1)?.Value) !== 0
+            || Number(part.current?.Value ?? part.history.at(-1)?.Value) !== 0
             || Object.keys(part.breakdown).length > 0);
 }
 
