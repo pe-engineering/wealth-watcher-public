@@ -518,6 +518,33 @@ public sealed class EndpointExtensionsTests
     }
 
     [Fact]
+    public async Task Dashboard_current_total_matches_across_periods_after_market_close()
+    {
+        var entries = new[] { (Day: 4, Hour: 12, Value: 140m), (Day: 10, Hour: 10, Value: 125m), (Day: 10, Hour: 20, Value: 150m) }
+            .Select(item => new InvestmentEntry("SIPP", "pensions", item.Value, 100m,
+                new DateOnly(2026, 8, item.Day), new TimeOnly(item.Hour, 0))
+            {
+                ProviderKey = "snaptrade",
+                ExternalAssetId = "account:sipp"
+            });
+        await using var host = await ForecastHost.CreateAsync(entries, Utc(2026, 8, 10, 21, 0),
+            connections: [new IntegrationConnection
+            {
+                ProviderKey = "snaptrade", DisplayName = "Pension", Enabled = true,
+                Status = IntegrationConnectionStatus.Active, OnlyPollDuringMarketTimes = true
+            }]);
+
+        var totals = new List<decimal>();
+        foreach (var period in new[] { "1D", "1W", "1M", "3M", "YTD", "MAX" })
+        {
+            using var dashboard = await host.GetDashboardAsync(period);
+            totals.Add(dashboard.RootElement.GetProperty("CurrentTotal").GetDecimal());
+        }
+
+        Assert.All(totals, total => Assert.Equal(150m, total));
+    }
+
+    [Fact]
     public async Task Aggregate_keeps_snaptrade_total_and_undeployed_cash_separate_for_one_asset()
     {
         var asset = new Asset { DisplayName = "AJ Bell - SIPP" };
