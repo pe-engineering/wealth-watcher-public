@@ -2,7 +2,13 @@
 
 All notable changes to this project will be documented here.
 
-The latest stable release is `v0.14.0`. Changes that have not yet been released are grouped under `Unreleased`.
+The latest stable release is `v0.15.0`. Changes that have not yet been released are grouped under `Unreleased`.
+
+## 0.15.0 - 2026-10-21
+
+- Fix the Dashboard Day total so it matches every other range: dashboard totals, contributors, and cards now use a per-category `Current` snapshot that includes observations made after market close, while the Day chart still ends at market close.
+- Keep an already active integration connection `Active` after a successful connection test so scheduled polling and webhook dispatch continue.
+- Add regression tests for dashboard current-total parity across periods; no migration or configuration change is required.
 
 ## 0.14.0 - 2026-10-13
 
