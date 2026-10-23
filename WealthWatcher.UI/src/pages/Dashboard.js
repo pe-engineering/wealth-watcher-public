@@ -1456,7 +1456,7 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
     container.innerHTML += cardHtml;
     const renderedCard = container.lastElementChild;
     const accessibleHeaders = isPropertyCard
-        ? [{ key: 'date', label: 'Date' }, { key: 'grossValue', label: 'Property value' }, { key: 'equity', label: 'Equity' }]
+        ? [{ key: 'date', label: 'Date' }, { key: 'grossValue', label: 'Property value' }, { key: 'equity', label: 'Equity' }, { key: 'mortgage', label: 'Mortgage value' }]
         : [{ key: 'date', label: 'Date' }, { key: 'value', label: 'Value' }];
     renderAccessibleChartData(renderedCard?.querySelector?.('[data-dashboard-chart-data]'), {
         summary: `View ${displayLabel} trend data`,
@@ -1465,7 +1465,8 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
             date: point?.Time,
             value: Number(point?.Value ?? 0),
             grossValue: Number(point?.GrossValue ?? point?.Value ?? 0),
-            equity: Number(point?.Equity ?? point?.Value ?? 0)
+            equity: Number(point?.Equity ?? point?.Value ?? 0),
+            mortgage: getPropertyMortgageValue(point)
         })),
         formatCell: (row, key) => key === 'date'
             ? formatDashboardTooltipTitle(row.date, selectedPeriod)
@@ -1518,6 +1519,11 @@ function renderCard(cat, currentVal, pastVal, delta, history, breakdown, lastSyn
     }, 0);
 }
 
+function getPropertyMortgageValue(point) {
+    return Number(point?.GrossValue ?? point?.Value ?? 0)
+        - Number(point?.Equity ?? point?.Value ?? 0);
+}
+
 export function buildAssetCardChartSeries(categoryId, history, cardColor) {
     const points = Array.isArray(history) ? history : [];
     const common = {
@@ -1540,6 +1546,12 @@ export function buildAssetCardChartSeries(categoryId, history, cardColor) {
                 label: 'Equity',
                 data: points.map(point => Number(point?.Equity ?? point?.Value ?? 0)),
                 borderColor: '#e2e8f0'
+            },
+            {
+                ...common,
+                label: 'Mortgage value',
+                data: points.map(getPropertyMortgageValue),
+                borderColor: '#ef4444'
             }
         ];
     }
