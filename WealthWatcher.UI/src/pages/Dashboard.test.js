@@ -209,19 +209,33 @@ test('asset-card chart aggregation uses range-aware closing buckets and prefers 
     assert.equal(yearToDate.at(-1).Time, '2026-01-15');
 });
 
-test('property asset-card charts keep gross value and equity as separate series', () => {
+test('property asset-card charts show gross value, equity and outstanding mortgage', () => {
     const history = [
         { Time: '2026-01-01', Value: 100, GrossValue: 200, Equity: 100 },
-        { Time: '2026-01-02', Value: 125, GrossValue: 225, Equity: 125 }
+        { Time: '2026-01-02', Value: 150, GrossValue: 225, Equity: 150 }
     ];
 
     const series = buildAssetCardChartSeries('property', history, '#f59e0b');
 
-    assert.equal(series.length, 2);
+    assert.equal(series.length, 3);
     assert.equal(series[0].label, 'Property value');
     assert.deepEqual(series[0].data, [200, 225]);
     assert.equal(series[1].label, 'Equity');
-    assert.deepEqual(series[1].data, [100, 125]);
+    assert.deepEqual(series[1].data, [100, 150]);
+    assert.equal(series[2].label, 'Mortgage value');
+    assert.deepEqual(series[2].data, [100, 75]);
+    assert.notEqual(series[2].borderColor, series[0].borderColor);
+    assert.notEqual(series[2].borderColor, series[1].borderColor);
+});
+
+test('property mortgage charts support equity in Value and fully paid mortgages', () => {
+    const series = buildAssetCardChartSeries('property', [
+        { Value: 150, GrossValue: 225 },
+        { Value: 225, GrossValue: 225, Equity: 225 },
+        { Value: 225 }
+    ], '#f59e0b');
+
+    assert.deepEqual(series[2].data, [75, 0, 0]);
 });
 
 test('property insight contributors separate linked value movement from mortgage-driven equity', () => {
