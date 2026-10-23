@@ -2,7 +2,13 @@
 
 All notable changes to this project will be documented here.
 
-The latest stable release is `v0.15.0`. Changes that have not yet been released are grouped under `Unreleased`.
+The latest stable release is `v0.16.0`. Changes that have not yet been released are grouped under `Unreleased`.
+
+## 0.16.0 - 2026-10-23
+
+- Add a red Mortgage value line alongside property value and equity on the Dashboard Properties chart.
+- Include outstanding mortgage balances in chart legends, tooltips, and the accessible trend data table, with regression coverage for repayments and fully paid mortgages.
+- No database migration or configuration change is required.
 
 ## 0.15.0 - 2026-10-21
 
